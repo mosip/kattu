@@ -1,0 +1,46 @@
+name: NPM Build
+
+on:
+  workflow_call:
+    inputs:
+      SERVICE_NAME:
+        required: true
+        type: string
+      SERVICE_LOCATION:
+        required: true
+        type: string
+
+jobs:
+  build-npm:
+    runs-on: ubuntu-latest
+    steps:
+    # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+    - uses: actions/checkout@v3
+    - uses: actions/setup-node@v3.7.0
+      with:
+        node-version: '16'
+
+    - name: NPM Install
+      run: cd ${{ inputs.SERVICE_LOCATION }} && npm install --ignore-scripts
+
+    - name: NPM Build
+      run: cd ${{ inputs.SERVICE_LOCATION }} && npm run-script build -- --prod --base-href . --output-path=dist
+
+    - name: Zip Build Application
+      if: ${{ !contains(github.ref, 'master') || !contains(github.ref, 'main') }}
+      run: cd ${{ inputs.SERVICE_LOCATION }} && zip -r ${{ inputs.SERVICE_NAME }}.zip dist
+
+    - name: Upload the npm zip file
+      if: ${{ !contains(github.ref, 'master') || !contains(github.ref, 'main') }}
+      uses: actions/upload-artifact@v3
+      with:
+          name: ${{ inputs.SERVICE_NAME }}
+          path: ${{ inputs.SERVICE_LOCATION }}/${{ inputs.SERVICE_NAME }}.zip
+
+    - uses: 8398a7/action-slack@v3
+      with:
+          status: ${{ job.status }}
+          fields: repo,message,commit,workflow,job # selectable (default: repo,message)
+      env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }} # required
+      if: failure() # Pick up events even if the job fails or is canceled.

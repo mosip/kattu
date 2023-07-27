@@ -1,0 +1,108 @@
+name: Build/Publish to Sonar-Analysis via Gradlew
+on:
+  workflow_call:
+    inputs:
+      SERVICE_LOCATION:
+        description: 'SERVICE LOCATION'
+        required: true
+        type: string
+      SERVICE_NAME:
+        description: 'SERVICE NAME'
+        required: true
+        type: string
+      GRADLEW_ARGS:
+        description: 'Provide gradlew command arguments'
+        required: true
+        type: string
+      IS_JOB_SONAR:
+        description: ''
+        required: false
+        default: 'false'
+        type: string
+    secrets:
+      SONAR_TOKEN:
+        required: false
+      SONAR_ORGANIZATION:
+        required: false
+env:
+  ANDROID_HOME: '/opt/android-sdk/'
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to get PR information, if any
+  SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+  SONAR_ORGANIZATION: ${{ secrets.SONAR_ORGANIZATION }}
+
+jobs:
+  gradlew:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
+
+      - name: Set up JDK 11
+        uses: actions/setup-java@v3
+        with:
+          distribution: adopt
+          java-version: 11
+          server-id: ossrh # Value of the distributionManagement/repository/id field of the pom.xml
+          settings-path: ${{ github.workspace }} # location for the settings.xml file
+
+      - name: Cache SonarCloud packages
+        uses: actions/cache@v3.3.1
+        with:
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar
+          restore-keys: ${{ runner.os }}-sonar
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v3.3.1
+        with:
+          path: ~/.gradle/caches
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle') }}
+          restore-keys: ${{ runner.os }}-gradle
+
+      - name: npm Install
+        run: cd ${{ inputs.SERVICE_LOCATION }} && npm install
+
+      - name: Check if Environmental variables set for sonar
+        run: | 
+          if [[ -z $SONAR_TOKEN ]]; then
+            echo "\$SONAR_TOKEN environmental variable not set; EXITING;";
+            exit 1;
+          fi
+          if [[ -z $SONAR_ORGANIZATION ]]; then
+            echo "\$SONAR_ORGANIZATION environmental variable not set; EXITING;";
+            exit 1;
+          fi
+        if: ${{ contains(inputs.IS_JOB_SONAR, 'true') }}
+
+      - name: Build APK via Gradlew
+        run: |
+          cd ${{ inputs.SERVICE_LOCATION }}/android
+          sed -i -e 's/\r$//' ./gradlew
+          chmod +x ./gradlew
+          ./gradlew ${{ inputs.GRADLEW_ARGS }}
+
+      - name: Verify the build Gradlew application
+        run: cd ${{ inputs.SERVICE_LOCATION }} && npm run verify
+        if: ${{ contains(inputs.IS_JOB_SONAR, 'false') }}
+
+      - name: Find *.apk files
+        id: apk
+        run: |
+          echo "FOUND_APK=false" >> $GITHUB_OUTPUT
+          APK_LIST=$( find -name '*.apk' )
+          if [[ $APK_LIST != '' ]]; then
+            echo "FOUND_APK=true" >> $GITHUB_OUTPUT
+          fi
+          find -name '*.apk' -type f  -exec zip ${{ inputs.SERVICE_NAME }}.zip {} +
+
+        if: ${{ contains(inputs.IS_JOB_SONAR, 'false') }}
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ inputs.SERVICE_NAME }}
+          path: ${{ inputs.SERVICE_NAME }}.zip
+          retention-days: 5
+        if: (inputs.IS_JOB_SONAR == 'false') && (steps.apk.outputs.FOUND_APK == 'true')

@@ -12,6 +12,11 @@ on:
         required: true
       SONAR_ORGANIZATION:
         required: true
+      SONAR_URL:
+        required: true
+      SLACK_WEBHOOK_URL:
+        required: true
+
 env:
   ANDROID_HOME: '/opt/android-sdk/'
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to get PR information, if any
@@ -79,5 +84,5 @@ jobs:
           status: ${{ job.status }}
           fields: repo,message,author,commit,workflow,job # selectable (default: repo,message)
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }} # required
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} # required
         if: failure() # Pick up events even if the job fails or is canceled.

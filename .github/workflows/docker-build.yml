@@ -24,6 +24,8 @@ on:
         required: true
       DEV_NAMESPACE_DOCKER_HUB:
         required: true
+      SLACK_WEBHOOK_URL:
+        required: true
 
 jobs:
   build-dockers:
@@ -109,5 +111,5 @@ jobs:
           status: ${{ job.status }}
           fields: repo,message,author,commit,workflow,job # selectable (default: repo,message)
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_DEVOPS_WEBHOOK }} # required
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} # required
         if: failure() # Pick up events even if the job fails or is canceled. 

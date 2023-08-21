@@ -6,7 +6,7 @@ on:
       SERVICE_LOCATION:
         required: true
         type: string
-      SERVICE_NAME:
+      BUILD_ARTIFACT:
         required: true
         type: string
     secrets:
@@ -38,7 +38,7 @@ jobs:
         echo "BRANCH_NAME=$(echo ${{ github.ref }} | sed -e 's,.*/\(.*\),\1,')" >> $GITHUB_ENV
         echo "GPG_TTY=$(tty)" >> $GITHUB_ENV  
 
-    - name: Setup branch and GPG public key 
+    - name: Setup branch and GPG public key
       run: |
         # Strip git ref prefix from version
         echo ${{ env.BRANCH_NAME }}
@@ -46,22 +46,22 @@ jobs:
         sudo apt-get --yes install gnupg2
         gpg2 --import ./.github/keys/mosipgpgkey_pub.gpg 
         gpg2 --quiet --batch --passphrase=${{secrets.GPG_SECRET}}  --allow-secret-key-import --import ./.github/keys/mosipgpgkey_sec.gpg 
-     
+
     - uses: actions/cache@v3.3.1
       with:
         path: ~/.m2/repository
         key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
         restore-keys: |
           ${{ runner.os }}-maven-${{ env.BRANCH_NAME }}
-          
+
     - name: Install xmlstartlet and xmllint
       run: |
         sudo apt-get update
         sudo apt-get install xmlstarlet libxml2-utils
-    
+
     - name: Setup the settings file for ossrh server
       run: echo "<settings> <servers>  <server>  <id>ossrh</id>    <username>${{secrets.OSSRH_USER}}</username> <password>${{secrets.OSSRH_SECRET}}</password> </server> </servers> <profiles> <profile>     <id>ossrh</id> <activation> <activeByDefault>true</activeByDefault> </activation>  <properties> <gpg.executable>gpg2</gpg.executable> <gpg.passphrase>${{secrets.GPG_SECRET}}</gpg.passphrase> </properties> </profile> <profile> <id>allow-snapshots</id>       <activation><activeByDefault>true</activeByDefault></activation> <repositories> <repository>        <id>snapshots-repo</id> <url>https://oss.sonatype.org/content/repositories/snapshots</url> <releases><enabled>false</enabled></releases> <snapshots><enabled>true</enabled></snapshots> </repository>  <repository>         <id>releases-repo</id>  <url>https://oss.sonatype.org/service/local/staging/deploy/maven2</url>         <releases><enabled>true</enabled></releases>         <snapshots><enabled>false</enabled></snapshots> </repository> </repositories>  </profile> <profile> <id>sonar</id> <properties>  <sonar.sources>.</sonar.sources> <sonar.host.url>https://sonarcloud.io</sonar.host.url>  </properties> <activation> <activeByDefault>false</activeByDefault> </activation> </profile> </profiles> </settings>" > $GITHUB_WORKSPACE/settings.xml
-    
+
     - name: Build check for MOSIP License
       run: cd ${{ inputs.SERVICE_LOCATION }} && xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:licenses[1]/s:license/s:name" -nl pom.xml | grep -q "MPL 2.0"
 
@@ -82,22 +82,24 @@ jobs:
 
     - name: Build with Maven
       run: cd ${{ inputs.SERVICE_LOCATION }} && mvn -B package --file pom.xml -s $GITHUB_WORKSPACE/settings.xml
-         
+
     - name: Ready the springboot artifacts
       if: ${{ !contains(github.ref, 'master') || !contains(github.ref, 'main') }}
-      run: find -name '*.jar' -executable -type f  -exec zip ${{ inputs.SERVICE_NAME }}.zip {} +
+      run: |
+        ## FIND JARS & COPY ONLY EXECUTABLE JARs STORED UNDER TARGET DIRECTORY 
+        find ${{ inputs.SERVICE_LOCATION }} -path '*/target/*' -name '*.jar'  -type f  -executable -exec zip ${{ inputs.BUILD_ARTIFACT }}.zip {} +
 
-    - name: Upload the springboot jars 
+    - name: Upload the springboot jars
       if: ${{ !contains(github.ref, 'master') || !contains(github.ref, 'main') }}
       uses: actions/upload-artifact@v3
       with:
-        name: ${{ inputs.SERVICE_NAME }}
-        path: ./${{ inputs.SERVICE_NAME }}.zip
+        name: ${{ inputs.BUILD_ARTIFACT }}
+        path: ./${{ inputs.BUILD_ARTIFACT }}.zip
 
     - uses: 8398a7/action-slack@v3
       with:
         status: ${{ job.status }}
-        fields: repo,message,commit,workflow,job # selectable (default: repo,message)
+        fields: repo,message,author,commit,workflow,job # selectable (default: repo,message)
       env:
         SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }} # required
       if: failure() # Pick up events even if the job fails or is canceled.

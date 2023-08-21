@@ -3,7 +3,7 @@ name: NPM Build
 on:
   workflow_call:
     inputs:
-      SERVICE_NAME:
+      BUILD_ARTIFACT:
         required: true
         type: string
       SERVICE_LOCATION:
@@ -11,7 +11,7 @@ on:
         type: string
 
 jobs:
-  build-npm:
+  npm-build:
     runs-on: ubuntu-latest
     steps:
     # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
@@ -28,19 +28,19 @@ jobs:
 
     - name: Zip Build Application
       if: ${{ !contains(github.ref, 'master') || !contains(github.ref, 'main') }}
-      run: cd ${{ inputs.SERVICE_LOCATION }} && zip -r ${{ inputs.SERVICE_NAME }}.zip dist
+      run: cd ${{ inputs.SERVICE_LOCATION }} && zip -r ${{ inputs.BUILD_ARTIFACT }}.zip dist
 
     - name: Upload the npm zip file
       if: ${{ !contains(github.ref, 'master') || !contains(github.ref, 'main') }}
       uses: actions/upload-artifact@v3
       with:
-          name: ${{ inputs.SERVICE_NAME }}
-          path: ${{ inputs.SERVICE_LOCATION }}/${{ inputs.SERVICE_NAME }}.zip
+        name: ${{ inputs.BUILD_ARTIFACT }}
+        path: ${{ inputs.SERVICE_LOCATION }}/${{ inputs.BUILD_ARTIFACT }}.zip
 
     - uses: 8398a7/action-slack@v3
       with:
-          status: ${{ job.status }}
-          fields: repo,message,commit,workflow,job # selectable (default: repo,message)
+        status: ${{ job.status }}
+        fields: repo,message,author,commit,workflow,job # selectable (default: repo,message)
       env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }} # required
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }} # required
       if: failure() # Pick up events even if the job fails or is canceled.

@@ -1,5 +1,4 @@
-name: Publish to NPM
-
+name: Sonar Analysis via Gradlew
 on:
   workflow_call:
     inputs:
@@ -7,19 +6,20 @@ on:
         description: 'SERVICE LOCATION'
         required: true
         type: string
-      GRADLEW_ARGS:
-        description: 'Provide gradlew arguments'
-        required: true
-        type: string
-    secrets:
-      NPM_AUTH_TOKEN:
-        required: true
 
+    secrets:
+      SONAR_TOKEN:
+        required: true
+      SONAR_ORGANIZATION:
+        required: true
 env:
   ANDROID_HOME: '/opt/android-sdk/'
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to get PR information, if any
+  SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+  SONAR_ORGANIZATION: ${{ secrets.SONAR_ORGANIZATION }}
 
 jobs:
-  gradlew-publish-to-npm-registry:
+  gradlew-sonar-analysis:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
@@ -52,32 +52,32 @@ jobs:
       - name: npm Install
         run: cd ${{ inputs.SERVICE_LOCATION }} && npm install
 
-      - name: Build APK via Gradlew
+      - name: Check if Environmental variables set for sonar
+        run: | 
+          if [[ -z $SONAR_TOKEN ]]; then
+            echo "\$SONAR_TOKEN environmental variable not set; EXITING;";
+            exit 1;
+          fi
+          if [[ -z $SONAR_ORGANIZATION ]]; then
+            echo "\$SONAR_ORGANIZATION environmental variable not set; EXITING;";
+            exit 1;
+          fi
+          if [[ -z $SONAR_URL ]]; then
+            echo "\$SONAR_URL environmental variable not set; EXITING;";
+            exit 1;
+          fi
+
+      - name: Analysis with Sonarcloud
         run: |
-          cd ${{ inputs.SERVICE_LOCATION }}/android
+          cd ${{ inputs.SERVICE_LOCATION }}
           sed -i -e 's/\r$//' ./gradlew
           chmod +x ./gradlew
-          ./gradlew ${{ inputs.GRADLEW_ARGS }}
+          ./gradlew build test testDebugUnitTestCoverage sonarqube --info --warning-mode all
 
-      - name: Verify the build Gradlew application
-        run: cd ${{ inputs.SERVICE_LOCATION }} && npm run verify
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v3.7.0
+      - uses: 8398a7/action-slack@v3
         with:
-          package_path: '${{ inputs.SERVICE_LOCATION }}'
-          registry-url: 'https://registry.npmjs.org/'
-
-      - name: Publish package
-        run: cd ${{ inputs.SERVICE_LOCATION }} && npm publish
+          status: ${{ job.status }}
+          fields: repo,message,author,commit,workflow,job # selectable (default: repo,message)
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_AUTH_TOKEN }}
-
-      - name: Tag
-        run: |
-          pwd
-          cd ${{ inputs.SERVICE_LOCATION }}
-          VERSION=$(grep -o '"version": "[^"]*' package.json | sed 's/"version": "//') #Replace with the versioning strategy you prefer
-          VERSION="v${VERSION}_npm"
-          git tag $VERSION
-          git push origin $VERSION
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }} # required
+        if: failure() # Pick up events even if the job fails or is canceled.

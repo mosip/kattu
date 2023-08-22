@@ -1,0 +1,75 @@
+name: Release/pre-release Preparation.
+
+on:
+  workflow_call:
+    inputs:
+      MESSAGE:
+        description: 'Triggered for release or pe-release'
+        required: false
+        default: 'Release Preparation'
+        type: string
+      RELEASE_TAG:
+        description: 'tag to update'
+        required: true
+        type: string
+      SNAPSHOT_TAG:
+        description: 'tag to be replaced'
+        required: true
+        type: string
+      BASE:
+        description: 'base branch for PR'
+        required: true
+        type: string
+    secrets:
+      SLACK_WEBHOOK_URL:
+        required: true
+
+jobs:
+  maven-release-preparation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup branch and env
+        run: |
+          # Strip git ref prefix from version
+          echo "BRANCH_NAME=$(echo ${{ github.ref }} | sed -e 's,.*/\(.*\),\1,')" >> $GITHUB_ENV
+          echo "GPG_TTY=$(tty)" >> $GITHUB_ENV
+
+      - name: Mannualy changing the pom versions
+        run: find . -type f -name "*pom.xml" -print0 | xargs -0 sed -i "s/${{ github.event.inputs.SNAPSHOT_TAG }}/${{ github.event.inputs.RELEASE_TAG }}/g"
+      - name: update Branch name in badges
+        run: |
+          sed -i 's/branch=[^\&]*)]/branch=${{ env.BRANCH_NAME }}\)]/g'  README.md
+          sed -i 's/branch=[^\&]*\&/branch=${{ env.BRANCH_NAME }}\&/g'  README.md
+
+      - name: Updating the Release URL in POM
+        run: |
+          cd .github/workflows
+          sed -i 's/OSSRH_SNAPSHOT_URL/RELEASE_URL/g' push_trigger.yml
+
+      - name: Updating libs-snapshot-local to libs-release local for artifactory URL's.
+        run: find . -type f -name "*Dockerfile" -print0 | xargs -0 sed -i "s/libs-snapshot-local/libs-release-local/g"
+
+      - name: removing -DskipTests
+        run: find . -type f -name "*push_trigger.yml" -print0 | xargs -0 sed -i "s/"-DskipTests"//g"
+        
+      - name: removing --Dgpg.skip
+        run: find . -type f -name "*push_trigger.yml" -print0 | xargs -0 sed -i "s/"-Dgpg.skip"//g"
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v5.0.2
+        with:
+          commit-message: Updated Pom versions for release changes
+          title: Release changes
+          body: Automated PR for ${{ github.event.inputs.RELEASE_TAG }} release.
+          branch: release-branch
+          delete-branch: true
+          base: ${{ github.event.inputs.BASE }}
+
+      - uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          fields: repo,message,author,commit,workflow,job # selectable (default: repo,message)
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} # required
+        if: failure() # Pick up events even if the job fails or is canceled.

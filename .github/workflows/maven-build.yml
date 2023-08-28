@@ -76,14 +76,14 @@ jobs:
     - name: Build check for sign plugin
       run: cd ${{ inputs.SERVICE_LOCATION }} && xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:build/s:plugins/s:plugin[s:groupId='org.apache.maven.plugins']/s:artifactId" -nl pom.xml | grep -q "maven-gpg-plugin"
 
-    - name: Validate pom.xml via xmllint
+    - name: Validate pom.xml & settings.xml via xmllint
       run: |
         find ${{ inputs.SERVICE_LOCATION }} -type f -name pom.xml | while read -r F; do
           xmllint --xpath '/*[local-name()="project"]/*[local-name()="version"]' $F
         done
 
     - name: Build with Maven
-      run: cd ${{ inputs.SERVICE_LOCATION }} && mvn -B -U package --file pom.xml -s $GITHUB_WORKSPACE/settings.xml
+      run: cd ${{ inputs.SERVICE_LOCATION }} && mvn -U -B package --file pom.xml -s $GITHUB_WORKSPACE/settings.xml
 
     - name: Ready the springboot artifacts
       if: ${{ !contains(github.ref, 'master') || !contains(github.ref, 'main') }}

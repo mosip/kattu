@@ -64,7 +64,7 @@ jobs:
 
     - name: Publish the maven package
       run: |
-        cd ${{ inputs.SERVICE_LOCATION }} && mvn -B -U deploy  -DaltDeploymentRepository=ossrh::default::${{ secrets.OSSRH_URL }} -s $GITHUB_WORKSPACE/settings.xml -f pom.xml
+        cd ${{ inputs.SERVICE_LOCATION }} && mvn -U -B deploy  -DaltDeploymentRepository=ossrh::default::${{ secrets.OSSRH_URL }} -s $GITHUB_WORKSPACE/settings.xml -f pom.xml
       env:
         GITHUB_TOKEN: ${{secrets.OSSRH_TOKEN}}
         GPG_TTY: $(tty)

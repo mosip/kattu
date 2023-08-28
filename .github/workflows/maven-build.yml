@@ -78,12 +78,12 @@ jobs:
 
     - name: Validate pom.xml & settings.xml via xmllint
       run: |
-        find ${{ inputs.SERVICE_LOCATION }}/ -type f -name pom.xml -o -name settings.xml | while read -r F; do
+        find ${{ inputs.SERVICE_LOCATION }} -type f -name pom.xml | while read -r F; do
           xmllint --xpath '/*[local-name()="project"]/*[local-name()="version"]' $F
         done
 
     - name: Build with Maven
-      run: cd ${{ inputs.SERVICE_LOCATION }} && mvn -B package --file pom.xml -s $GITHUB_WORKSPACE/settings.xml
+      run: cd ${{ inputs.SERVICE_LOCATION }} && mvn -U -B package --file pom.xml -s $GITHUB_WORKSPACE/settings.xml
 
     - name: Ready the springboot artifacts
       if: ${{ !contains(github.ref, 'master') || !contains(github.ref, 'main') }}

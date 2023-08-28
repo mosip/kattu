@@ -10,8 +10,9 @@ on:
         required: true
         type: string
       BUILD_ARTIFACT:
-        required: true
+        required: false
         type: string
+        default: false
       NPM_BUILD:
         required: false
         type: boolean
@@ -38,6 +39,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: actions/download-artifact@v3
+        if: ${{ ( inputs.BUILD_ARTIFACT != 'false' ) }}
         with:
           name: ${{ inputs.BUILD_ARTIFACT }}
           path: ./
@@ -49,7 +51,7 @@ jobs:
           echo "GPG_TTY=$(tty)" >> $GITHUB_ENV  
 
       - name: Get version info from pom
-        if: ${{ contains(inputs.NPM_BUILD, 'false') }}
+        if: ${{ contains(inputs.NPM_BUILD, 'false') && ( inputs.BUILD_ARTIFACT != 'false' ) }}
         id: getPomVersion
         uses: mavrosxristoforos/get-xml-info@1.1.1
         with:
@@ -57,12 +59,12 @@ jobs:
           xpath: /*[local-name()="project"]/*[local-name()="version"]
 
       - name: Unzip and extract for maven
-        if: ${{ contains(inputs.NPM_BUILD, 'false') }}
+        if: ${{ contains(inputs.NPM_BUILD, 'false') && ( inputs.BUILD_ARTIFACT != 'false' ) }}
         run: |
           unzip -uj "./${{ inputs.BUILD_ARTIFACT }}.zip" "${{ inputs.SERVICE_LOCATION }}/target/*" -d "${{ env.SERVICE_LOCATION }}/target/"
 
       - name: Unzip and extract for npm
-        if: ${{ contains(inputs.NPM_BUILD, 'true') }}
+        if: ${{ contains(inputs.NPM_BUILD, 'true') && ( inputs.BUILD_ARTIFACT != 'false' ) }}
         run: |
           unzip "./${{ inputs.BUILD_ARTIFACT }}.zip" "dist/*" -d "${{ inputs.SERVICE_LOCATION }}"
 

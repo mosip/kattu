@@ -17,6 +17,10 @@ on:
         required: false
         type: boolean
         default: false
+      ONLY_DOCKER:
+        required: false
+        type: boolean
+        default: false
 
     secrets:
       RELEASE_DOCKER_HUB:
@@ -48,25 +52,31 @@ jobs:
         run: |
           # Strip git ref prefix from version
           echo "BRANCH_NAME=$(echo ${{ github.ref }} | sed -e 's,.*/\(.*\),\1,')" >> $GITHUB_ENV
-          echo "GPG_TTY=$(tty)" >> $GITHUB_ENV  
+          echo "GPG_TTY=$(tty)" >> $GITHUB_ENV
+          echo "${{ toJSON(inputs) }}"
 
       - name: Get version info from pom
-        if: ${{ contains(inputs.NPM_BUILD, 'false') && ( inputs.BUILD_ARTIFACT != 'false' ) }}
+        if: ${{ contains(inputs.NPM_BUILD, 'false') && ( inputs.BUILD_ARTIFACT != 'false' )  && ( inputs.ONLY_DOCKER == false ) }}
         id: getPomVersion
         uses: mavrosxristoforos/get-xml-info@1.1.1
         with:
           xml-file: ./${{ env.SERVICE_LOCATION }}/pom.xml
           xpath: /*[local-name()="project"]/*[local-name()="version"]
 
-      - name: Unzip and extract for maven
-        if: ${{ contains(inputs.NPM_BUILD, 'false') && ( inputs.BUILD_ARTIFACT != 'false' ) }}
+      - name: Unzip and extract for docker build
+        if: ${{ contains(inputs.NPM_BUILD, 'false' ) && ( inputs.BUILD_ARTIFACT != 'false' )  && ( inputs.ONLY_DOCKER == true )}}
         run: |
-          unzip -uj "./${{ inputs.BUILD_ARTIFACT }}.zip" "${{ inputs.SERVICE_LOCATION }}/target/*" -d "${{ env.SERVICE_LOCATION }}/target/"
+          unzip "${{ inputs.BUILD_ARTIFACT }}.zip" -d "${{ inputs.SERVICE_LOCATION }}"
+
+      - name: Unzip and extract for maven
+        if: ${{ contains(inputs.NPM_BUILD, 'false' ) && ( inputs.BUILD_ARTIFACT != 'false' ) && ( inputs.ONLY_DOCKER == false ) }}
+        run: |
+          unzip -uj "${{ inputs.BUILD_ARTIFACT }}.zip" "${{ inputs.SERVICE_LOCATION }}/target/*" -d "${{ env.SERVICE_LOCATION }}/target/"
 
       - name: Unzip and extract for npm
-        if: ${{ contains(inputs.NPM_BUILD, 'true') && ( inputs.BUILD_ARTIFACT != 'false' ) }}
+        if: ${{ contains(inputs.NPM_BUILD, 'true' ) && ( inputs.BUILD_ARTIFACT != false )  && ( inputs.ONLY_DOCKER == false )}}
         run: |
-          unzip "./${{ inputs.BUILD_ARTIFACT }}.zip" "dist/*" -d "${{ inputs.SERVICE_LOCATION }}"
+          unzip "${{ inputs.BUILD_ARTIFACT }}.zip" "dist/*" -d "${{ inputs.SERVICE_LOCATION }}"
 
       - name: Get current date
         run: echo "BUILD_TIME=$(date +'%Y-%m-%d-%H-%M-%S')"  >> $GITHUB_ENV
@@ -114,4 +124,4 @@ jobs:
           fields: repo,message,author,commit,workflow,job # selectable (default: repo,message)
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} # required
-        if: failure() # Pick up events even if the job fails or is canceled. 
+        if: failure() # Pick up events even if the job fails or is canceled.

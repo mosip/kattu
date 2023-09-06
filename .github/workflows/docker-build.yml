@@ -99,9 +99,11 @@ jobs:
           docker build . --build-arg SOURCE=mosip --build-arg COMMIT_HASH=$(git rev-parse HEAD) --build-arg COMMIT_ID=$(git rev-parse --short HEAD) --build-arg BUILD_TIME=$BUILD_TIME --file Dockerfile --tag ${{ env.SERVICE_NAME }}
 
       - name: Log into registry
+        if: "${{ github.event_name != 'pull_request' }}"
         run: echo "${{secrets.RELEASE_DOCKER_HUB}}" | docker login -u ${{secrets.ACTOR_DOCKER_HUB}} --password-stdin
 
       - name: Push image
+        if: "${{ github.event_name != 'pull_request' }}"
         run: |
           IMAGE_ID=$NAMESPACE/$SERVICE_NAME
           

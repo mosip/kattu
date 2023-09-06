@@ -40,7 +40,7 @@ jobs:
 
     - name: run sonar analysis
       run: |
-        cd "./${{env.SERVICE_LOCATION}}"
+        cd "./${{inputs.SERVICE_LOCATION}}"
         echo "sonar.host.url=${{ inputs.SONAR_URL }}
               sonar.login=${{ secrets.SONAR_TOKEN }}
               sonar.projectKey=mosip_admin-ui

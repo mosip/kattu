@@ -27,7 +27,7 @@ on:
         required: true
 
 jobs:
-  maven-onar-analysis:
+  maven-sonar-analysis:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3

@@ -49,13 +49,6 @@ jobs:
         gpg2 --import ./.github/keys/mosipgpgkey_pub.gpg 
         gpg2 --quiet --batch --passphrase=${{secrets.GPG_SECRET}}  --allow-secret-key-import --import ./.github/keys/mosipgpgkey_sec.gpg 
 
-    - uses: actions/cache@v3.3.1
-      with:
-        path: ~/.m2/repository
-        key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-        restore-keys: |
-          ${{ runner.os }}-maven-${{ env.BRANCH_NAME }}
-
     - name: Install xmlstartlet and xmllint
       run: |
         sudo apt-get update

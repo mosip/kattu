@@ -10,6 +10,10 @@ on:
         required: false
         type: string
         default: 'https://sonarcloud.io'
+      PROJECT_KEY:
+        required: false
+        type: string
+        default: "mosip_${{ github.event.repository.name }}"
     secrets:
       SONAR_TOKEN:
         required: true
@@ -43,7 +47,7 @@ jobs:
         cd "./${{inputs.SERVICE_LOCATION}}"
         echo "sonar.host.url=${{ inputs.SONAR_URL }}
               sonar.login=${{ secrets.SONAR_TOKEN }}
-              sonar.projectKey=mosip_admin-ui
+              sonar.projectKey=${{ inputs.PROJECT_KEY }}
               sonar.organization=${{ secrets.ORG_KEY }}
               sonar.sourceEncoding=UTF-8
               sonar.sources=src

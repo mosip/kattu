@@ -6,13 +6,27 @@ on:
         description: 'SERVICE LOCATION'
         required: true
         type: string
+      SONAR_URL:
+        required: false
+        type: string
+        default: 'https://sonarcloud.io'
+      PROJECT_KEY:
+        required: false
+        type: string
+        default: "mosip_${{ github.event.repository.name }}"
+      PROJECT_NAME:
+        required: false
+        type: string
+        default: "${{ github.event.repository.name }}"
+      SONAR_ARGS:
+        required: false
+        type: string
+        default: ""
 
     secrets:
       SONAR_TOKEN:
         required: true
       SONAR_ORGANIZATION:
-        required: true
-      SONAR_URL:
         required: true
       SLACK_WEBHOOK_URL:
         required: true
@@ -22,6 +36,7 @@ env:
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to get PR information, if any
   SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
   SONAR_ORGANIZATION: ${{ secrets.SONAR_ORGANIZATION }}
+  SONAR_URL: ${{ inputs.SONAR_URL }}
 
 jobs:
   gradlew-sonar-analysis:
@@ -77,7 +92,7 @@ jobs:
           cd ${{ inputs.SERVICE_LOCATION }}
           sed -i -e 's/\r$//' ./gradlew
           chmod +x ./gradlew
-          ./gradlew build test testDebugUnitTestCoverage sonarqube --info --warning-mode all
+          ./gradlew build sonarqube -Dsonar.organization=${{ env.SONAR_ORGANIZATION }} -Dsonar.projectKey=${{ inputs.PROJECT_KEY }} -Dsonar.projectName=${{ inputs.PROJECT_NAME }} -Dsonar.host.url=${{ inputs.SONAR_URL }} --info --warning-mode all ${{ inputs.SONAR_ARGS }}
 
       - uses: 8398a7/action-slack@v3
         with:

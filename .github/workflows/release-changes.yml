@@ -35,6 +35,11 @@ jobs:
           echo "BRANCH_NAME=$(echo ${{ github.ref }} | sed -e 's,.*/\(.*\),\1,')" >> $GITHUB_ENV
           echo "GPG_TTY=$(tty)" >> $GITHUB_ENV
 
+      - name: Install xmlstartlet and xmllint
+        run: |
+          sudo apt-get update
+          sudo apt-get install xmlstarlet libxml2-utils
+
       - name: Mannualy changing the pom versions
         run: find . -type f -name "*pom.xml" -print0 | xargs -0 sed -i "s/${{ github.event.inputs.SNAPSHOT_TAG }}/${{ github.event.inputs.RELEASE_TAG }}/g"
       - name: update Branch name in badges
@@ -45,16 +50,58 @@ jobs:
       - name: Updating the Release URL in POM
         run: |
           cd .github/workflows
-          sed -i 's/OSSRH_SNAPSHOT_URL/RELEASE_URL/g' push_trigger.yml
+          sed -i 's/OSSRH_SNAPSHOT_URL/RELEASE_URL/g' push-trigger.yml
 
       - name: Updating libs-snapshot-local to libs-release local for artifactory URL's.
         run: find . -type f -name "*Dockerfile" -print0 | xargs -0 sed -i "s/libs-snapshot-local/libs-release-local/g"
 
       - name: removing -DskipTests
-        run: find . -type f -name "*push_trigger.yml" -print0 | xargs -0 sed -i "s/"-DskipTests"//g"
+        run: sed -i "s/<skip>true<\/skip>/<skip>false<\/skip>/"       $( find ./ -type f -name "*pom.xml" )
         
-      - name: removing --Dgpg.skip
-        run: find . -type f -name "*push_trigger.yml" -print0 | xargs -0 sed -i "s/"-Dgpg.skip"//g"
+      #- name: removing --Dgpg.skip
+      #  run: find . -type f -name "*push-trigger.yml" -print0 | xargs -0 sed -i "s/"-Dgpg.skip"//g"
+
+      - name: Check if the *SNAPSHOT is present in the dependency section of the POM file.
+        run: |
+          # Find all pom.xml files
+          pomfiles=$(find ./ -type f -name "*pom.xml")
+          
+          snapshot_dependencies=()
+          
+          # Function to resolve a version and add it to snapshot_dependencies if it's a SNAPSHOT
+          resolve_version() {
+            local version=$1
+            local pomfile=$2
+          
+            output=$(mvn help:evaluate -Dexpression=$version -f $pomfile | grep -vE "INFO|WARNING")
+          
+            if [[ $output == *"ERROR"* ]]; then
+              echo "VERSION $version not found; EXITING"
+              exit 1
+            elif [[ $output == *"-SNAPSHOT"* ]]; then
+              echo "Adding VERSION $version to snapshot_dependencies list"
+              snapshot_dependencies+=("\n$pomfile: <$version>$output</$version>")
+            fi
+          }
+          
+          for pomfile in $pomfiles; do
+            echo "===================================== $pomfile =========================================="
+          
+            # Use xmlstarlet to extract dependency versions
+            dv=$(xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:dependencies/s:dependency/s:version" $pomfile | grep '[${}]' | sed 's/[${}]//g')
+          
+            echo "Dependency versions in $pomfile = $dv" | sed -z 's/\n/ /g'
+          
+            for v in $dv; do
+              echo -e "\nv=$v"
+              resolve_version "$v" "$pomfile"
+            done
+          done
+          
+          if [[ ${#snapshot_dependencies[@]} -gt 0 ]]; then
+            echo -e "Snapshot dependencies found: ${snapshot_dependencies[*]}"
+            exit 1
+          fi
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v5.0.2

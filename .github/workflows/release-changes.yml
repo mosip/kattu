@@ -23,6 +23,8 @@ on:
     secrets:
       SLACK_WEBHOOK_URL:
         required: true
+      ACTION_PAT:
+        required: true
 
 jobs:
   maven-release-preparation:

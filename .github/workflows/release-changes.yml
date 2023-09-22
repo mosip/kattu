@@ -112,6 +112,7 @@ jobs:
           branch: release-branch
           delete-branch: true
           base: ${{ github.event.inputs.BASE }}
+          token: ${{ secrets.ACTION_PAT }}
 
       - uses: 8398a7/action-slack@v3
         with:

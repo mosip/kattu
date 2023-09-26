@@ -1,13 +1,24 @@
 name: 'Delete old artifacts'
 on:
-    schedule:
-        - cron: '0 * * * *' # every hour
+  workflow_call:
+    secrets:
+      ACCESS_TOKEN:
+        required: true
+      SLACK_WEBHOOK_URL:
+        required: true
 
 jobs:
-    delete-artifacts:
-        runs-on: ubuntu-latest
-        steps:
-            - uses: kolpav/purge-artifacts-action@v1
-              with:
-                  token: ${{ secrets.access_token }}
-                  expire-in: 2days # Setting this to 0 will delete all artifacts
+  delete-artifacts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: kolpav/purge-artifacts-action@v1
+        with:
+          token: ${{ secrets.ACCESS_TOKEN }}
+          expire-in: 2days # Setting this to 0 will delete all artifacts
+      - uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          fields: repo,message,author,commit,workflow,job # selectable (default: repo,message)
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} # required
+        if: failure() # Pick up events even if the job fails or is canceled.

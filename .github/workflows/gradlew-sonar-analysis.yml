@@ -6,6 +6,10 @@ on:
         description: 'SERVICE LOCATION'
         required: true
         type: string
+      ANDROID_LOCATION:
+        description: 'ANDROID LOCATION'
+        required: true
+        type: string
       SONAR_URL:
         required: false
         type: string
@@ -47,29 +51,11 @@ jobs:
         with:
           fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
 
-      - name: Set up JDK 11
-        uses: actions/setup-java@v3
+      - uses: actions/setup-node@v3.7.0
         with:
-          distribution: adopt
-          java-version: 11
-          server-id: ossrh # Value of the distributionManagement/repository/id field of the pom.xml
-          settings-path: ${{ github.workspace }} # location for the settings.xml file
+          node-version: '16'
 
-      - name: Cache SonarCloud packages
-        uses: actions/cache@v3.3.1
-        with:
-          path: ~/.sonar/cache
-          key: ${{ runner.os }}-sonar
-          restore-keys: ${{ runner.os }}-sonar
-
-      - name: Cache Gradle packages
-        uses: actions/cache@v3.3.1
-        with:
-          path: ~/.gradle/caches
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle') }}
-          restore-keys: ${{ runner.os }}-gradle
-
-      - name: npm Install
+      - name: NPM Install Dependencies
         run: cd ${{ inputs.SERVICE_LOCATION }} && npm install
 
       - name: Check if Environmental variables set for sonar
@@ -89,7 +75,7 @@ jobs:
 
       - name: Analysis with Sonarcloud
         run: |
-          cd ${{ inputs.SERVICE_LOCATION }}
+          cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_LOCATION }}
           sed -i -e 's/\r$//' ./gradlew
           chmod +x ./gradlew
           ./gradlew build sonarqube -Dsonar.organization=${{ env.SONAR_ORGANIZATION }} -Dsonar.projectKey=${{ inputs.PROJECT_KEY }} -Dsonar.projectName=${{ inputs.PROJECT_NAME }} -Dsonar.host.url=${{ inputs.SONAR_URL }} --info --warning-mode all ${{ inputs.SONAR_ARGS }}

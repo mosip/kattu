@@ -24,7 +24,7 @@ jobs:
         node-version: '16'
 
     - name: NPM Install
-      run: cd ${{ inputs.SERVICE_LOCATION }} && npm install --ignore-scripts
+      run: cd ${{ inputs.SERVICE_LOCATION }} && npm install
 
     - name: NPM Build
       run: cd ${{ inputs.SERVICE_LOCATION }} && npm run-script build -- --prod --base-href . --output-path=dist

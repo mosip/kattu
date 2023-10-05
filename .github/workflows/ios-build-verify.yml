@@ -1,0 +1,73 @@
+name: PR - IOS build verification 
+
+on:
+  workflow_call:
+    secrets:
+      APP_STORE_CONNECT_TEAM_ID:
+        required: true
+      DEVELOPER_APP_ID:
+        required: true
+      INJI_IOS_DEVELOPER_APP_IDENTIFIER:
+        required: true
+      INJI_IOS_DEVELOPER_PORTAL_TEAM_ID:
+        required: true
+      INJI_IOS_FASTLANE_APPLE_ID:
+        required: true
+      INJI_IOS_FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD:
+        required: true
+      GIT_AUTHORIZATION:
+        required: true
+      INJI_IOS_PROVISIONING_PROFILE_SPECIFIER:
+        required: true
+      INJI_IOS_TEMP_KEYCHAIN_PASSWORD:
+        required: true
+      INJI_IOS_TEMP_KEYCHAIN_USER:
+        required: true
+      APPLE_KEY_ID:
+        required: true
+      APPLE_ISSUER_ID:
+        required: true
+      APPLE_KEY_CONTENT:
+        required: true
+      MATCH_PASSWORD:
+        required: true
+
+jobs:
+  build_ios:
+    name: Building the IPA
+    runs-on: macos-13
+    
+    steps:
+      - uses: actions/checkout@v3.1.0
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '16.x'
+      
+      - name: Install npm dependencies
+        run: |
+          npm install
+        
+      - name: Install Pod
+        run: |
+          cd ios
+          pod install
+        
+      - name: Building the IPA
+        run: |
+          cd ios
+          fastlane build_verify
+        env:
+          APP_STORE_CONNECT_TEAM_ID: '${{ secrets.APP_STORE_CONNECT_TEAM_ID }}'
+          DEVELOPER_APP_ID: '${{ secrets.DEVELOPER_APP_ID }}'
+          INJI_IOS_DEVELOPER_APP_IDENTIFIER: '${{ secrets.INJI_IOS_DEVELOPER_APP_IDENTIFIER }}'
+          INJI_IOS_DEVELOPER_PORTAL_TEAM_ID: '${{ secrets.INJI_IOS_DEVELOPER_PORTAL_TEAM_ID }}'
+          INJI_IOS_FASTLANE_APPLE_ID: '${{ secrets.INJI_IOS_FASTLANE_APPLE_ID }}'
+          INJI_IOS_FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD: '${{ secrets.INJI_IOS_FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD }}'
+          GIT_AUTHORIZATION: '${{ secrets.GIT_AUTHORIZATION }}'
+          INJI_IOS_PROVISIONING_PROFILE_SPECIFIER: '${{ secrets.INJI_IOS_PROVISIONING_PROFILE_SPECIFIER }}'
+          INJI_IOS_TEMP_KEYCHAIN_PASSWORD: '${{ secrets.INJI_IOS_TEMP_KEYCHAIN_PASSWORD }}'
+          INJI_IOS_TEMP_KEYCHAIN_USER: '${{ secrets.INJI_IOS_TEMP_KEYCHAIN_USER }}'
+          APPLE_KEY_ID: '${{ secrets.APPLE_KEY_ID }}'
+          APPLE_ISSUER_ID: '${{ secrets.APPLE_ISSUER_ID }}'
+          APPLE_KEY_CONTENT: '${{ secrets.APPLE_KEY_CONTENT }}'
+          MATCH_PASSWORD: '${{ secrets.MATCH_PASSWORD }}'

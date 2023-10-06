@@ -214,5 +214,5 @@ jobs:
         uses: actions/upload-artifact@v3.1.1
         with:
           name: ${{ github.event.inputs.buildname }}
-          path: android/app/build/outputs/apk/mosip/release/
+          path: android/app/build/outputs/apk/mosip/release/Inji_universal.apk
           retention-days: 5

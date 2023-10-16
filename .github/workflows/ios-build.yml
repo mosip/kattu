@@ -1,90 +1,22 @@
-name: Inji iOS build
+name: IOS Build
 
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
-      MIMOTO_HOST:
-        description: 'Mimoto backend service URL'
-        required: true
-        default: 'https://api.sandbox.mosip.net'
+      NODE_VERSION:
+        default: "16.x"
         type: string
-      ESIGNET_HOST:
-        description: 'Esignet backend service URL'
-        required: true
-        default: 'https://api.sandbox.mosip.net'
-        type: string
-      APPLICATION_THEME:
-        description: 'Application Theme'
-        required: true
-        default: 'orange'
-        type: choice
-        options:
-          - orange
-          - purple
-      CREDENTIAL_REGISTRY_EDIT:
-        description: 'Edit Registry'
-        required: true
-        default: 'true'
-        type: choice
-        options:
-          - false
-          - true
-      TESTFLIGHT_INTERNAL_TESTERS_GROUP:
-        description: 'Internal Testers Group'
-        required: true
-        default: 'QA-Triple'
-        type: choice
-        options:
-          - Dev-testing
-          - MEC
-          - QA
-          - MOSIP-Collab
-          - MOSIP-Dev-testing
-      TESTFLIGHT_BETA_APP_DESCRIPTION:
-        description: 'What to test'
-        required: true
-        default: 'QA-Triple environment build'
-        type: string
-    secrets:
-      APP_STORE_CONNECT_TEAM_ID:
-        required: true
-      DEVELOPER_APP_ID:
-        required: true
-      INJI_IOS_DEVELOPER_APP_IDENTIFIER:
-        required: true
-      INJI_IOS_DEVELOPER_PORTAL_TEAM_ID:
-        required: true
-      INJI_IOS_FASTLANE_APPLE_ID:
-        required: true
-      INJI_IOS_FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD:
-        required: true
-      GIT_AUTHORIZATION:
-        required: true
-      INJI_IOS_PROVISIONING_PROFILE_SPECIFIER:
-        required: true
-      INJI_IOS_TEMP_KEYCHAIN_PASSWORD:
-        required: true
-      INJI_IOS_TEMP_KEYCHAIN_USER:
-        required: true
-      APPLE_KEY_ID:
-        required: true
-      APPLE_ISSUER_ID:
-        required: true
-      APPLE_KEY_CONTENT:
-        required: true
-      MATCH_PASSWORD:
-        required: true
 
 jobs:
   build_ios:
-    name: Deploying to Testflight
+    name: Building the IPA
     runs-on: macos-13
 
     steps:
       - uses: actions/checkout@v3.1.0
       - uses: actions/setup-node@v3
         with:
-          node-version: '18.x'
+          node-version: ${{ inputs.NODE_VERSION }}
 
       - name: Install npm dependencies
         run: |
@@ -96,34 +28,7 @@ jobs:
           pod install
           pod install
 
-      - name: Deploy iOS Beta to TestFlight
+      - name: Building the IPA
         run: |
           cd ios
-          fastlane beta
-        env:
-          APP_STORE_CONNECT_TEAM_ID: '${{ secrets.APP_STORE_CONNECT_TEAM_ID }}'
-          DEVELOPER_APP_ID: '${{ secrets.DEVELOPER_APP_ID }}'
-          INJI_IOS_DEVELOPER_APP_IDENTIFIER: '${{ secrets.INJI_IOS_DEVELOPER_APP_IDENTIFIER }}'
-          INJI_IOS_DEVELOPER_PORTAL_TEAM_ID: '${{ secrets.INJI_IOS_DEVELOPER_PORTAL_TEAM_ID }}'
-          INJI_IOS_FASTLANE_APPLE_ID: '${{ secrets.INJI_IOS_FASTLANE_APPLE_ID }}'
-          INJI_IOS_FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD: '${{ secrets.INJI_IOS_FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD }}'
-          GIT_AUTHORIZATION: '${{ secrets.GIT_AUTHORIZATION }}'
-          INJI_IOS_PROVISIONING_PROFILE_SPECIFIER: '${{ secrets.INJI_IOS_PROVISIONING_PROFILE_SPECIFIER }}'
-          INJI_IOS_TEMP_KEYCHAIN_PASSWORD: '${{ secrets.INJI_IOS_TEMP_KEYCHAIN_PASSWORD }}'
-          INJI_IOS_TEMP_KEYCHAIN_USER: '${{ secrets.INJI_IOS_TEMP_KEYCHAIN_USER }}'
-          APPLE_KEY_ID: '${{ secrets.APPLE_KEY_ID }}'
-          APPLE_ISSUER_ID: '${{ secrets.APPLE_ISSUER_ID }}'
-          APPLE_KEY_CONTENT: '${{ secrets.APPLE_KEY_CONTENT }}'
-          SLACK_URL: '${{ secrets.SLACK_WEBHOOK_DEVOPS }}'
-          MATCH_PASSWORD: '${{ secrets.MATCH_PASSWORD }}'
-          APPLICATION_THEME: ${{ inputs.APPLICATION_THEME }}
-          TESTFLIGHT_INTERNAL_TESTERS_GROUP: ${{ inputs.TESTFLIGHT_INTERNAL_TESTERS_GROUP }}
-          TESTFLIGHT_BETA_APP_DESCRIPTION: ${{ inputs.TESTFLIGHT_BETA_APP_DESCRIPTION }}
-
-      - name: Upload Runner Log on Failure
-        if: failure() # Only run this step if the previous steps failed
-        uses: actions/upload-artifact@v3.1.1
-        with:
-          name: runner-log
-          path: /Users/runner/Library/Logs/gym/
-          retention-days: 1
+          fastlane build_app

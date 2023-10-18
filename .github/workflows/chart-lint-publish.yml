@@ -1,0 +1,108 @@
+name: reusable workflows
+
+on:
+  workflow_call:
+    inputs:
+      CHARTS_DIR:
+        required: true
+        type: string
+      CHARTS_URL:
+        required: true
+        type: string
+      REPOSITORY:
+        required: true
+        type: string
+      BRANCH:
+        required: true
+        type: string
+      LINTING_CHART_SCHEMA_YAML_URL:
+        required: true
+        type: string
+      LINTING_LINTCONF_YAML_URL:
+        required: true
+        type: string
+      LINTING_CHART_TESTING_CONFIG_YAML_URL:
+        required: true
+        type: string
+      LINTING_HEALTH_CHECK_SCHEMA_YAML_URL:
+        required: true
+        type: string
+      IGNORE_CHARTS:
+        required: true
+        type: string
+      CHART_PUBLISH:
+        required: true
+        type: string
+      INCLUDE_ALL_CHARTS:
+        required: true
+        type: string
+    secrets:
+      TOKEN:
+        required: true
+      SLACK_WEBHOOK_URL:
+        required: true
+
+jobs:
+  chart-lint-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Validate Helm charts in Pull Requests
+        run: |
+          REPO_URL=${{ github.event.pull_request.base.repo.html_url }}
+          BRANCH_NAME=${{ github.event.pull_request.base.ref }}
+          git remote add upstream $REPO_URL.git
+          git fetch upstream
+          git remote -v 
+          CHARTS_MODIFIED=$( git diff --name-status upstream/$BRANCH_NAME | awk -F '/' '/charts/{print $2}' | sort | uniq | sed -E 's/(\S+)/^&$/g' | tr ' ' '|' )
+          cd ${{ inputs.CHARTS_DIR }}
+          echo "CHARTS_MODIFIED : $CHARTS_MODIFIED "
+          IGNORE_CHART_LIST=$( ls -d * | grep -Ev "$CHARTS_MODIFIED" |  sed ':a;N;$!ba;s/\n/|/g' )
+          echo "IGNORE CHART LIST : $IGNORE_CHART_LIST "
+          echo "IGNORE_CHARTS=$(echo $IGNORE_CHART_LIST )" >> $GITHUB_ENV
+          echo "CHART_PUBLISH=NO" >> $GITHUB_ENV
+        if: "${{ github.event_name == 'pull_request' }}"
+
+      - name: Get helm charts list
+        run: |
+          CHARTS_MODIFIED=$( git log -m -1 --name-only --pretty="" | awk -F '/' '/charts/{print $2}' | sort | uniq | sed -E 's/(\S+)/^&$/g' | tr ' ' '|' )
+          cd ${{ inputs.CHARTS_DIR }}
+          echo "CHARTS_MODIFIED : $CHARTS_MODIFIED"
+          IGNORE_CHART_LIST=$( echo "${{ env.IGNORE_CHARTS }}" )
+          if [[ ${{ inputs.INCLUDE_ALL_CHARTS  }} == "NO" ]]; then
+             IGNORE_CHART_LIST=$( ls -d * | grep -Ev "$CHARTS_MODIFIED" |  sed ':a;N;$!ba;s/\n/|/g' )
+          fi
+          echo "IGNORE CHART LIST : $IGNORE_CHART_LIST "
+          echo "IGNORE_CHARTS=$(echo $IGNORE_CHART_LIST )" >> $GITHUB_ENV
+        if: "${{ github.event_name != 'pull_request' }}"
+
+      - name: Validate / Publish Helm charts
+        uses: mosip/helm-gh-pages@master
+        with:
+          token: "${{ secrets.TOKEN }}"
+          charts_dir: "${{ inputs.CHARTS_DIR }}"
+          charts_url: "${{ inputs.CHARTS_URL }}"
+          repository: "${{ inputs.REPOSITORY }}"
+          branch: "${{ inputs.BRANCH }}"
+          ignore_charts: "${{  env.IGNORE_CHARTS || inputs.IGNORE_CHARTS }}"
+          chart_publish: "${{ env.CHART_PUBLISH  || inputs.CHART_PUBLISH  }}"
+          linting_chart_schema_yaml_url: "${{ inputs.LINTING_CHART_SCHEMA_YAML_URL }}"
+          linting_lintconf_yaml_url: "${{ inputs.LINTING_LINTCONF_YAML_URL }}"
+          linting_chart_testing_config_yaml_url: "${{ inputs.LINTING_CHART_TESTING_CONFIG_YAML_URL }}"
+          linting_health_check_schema_yaml_url: "${{ inputs.LINTING_HEALTH_CHECK_SCHEMA_YAML_URL }}"
+
+
+      # Commented below tasks as it cannot test MOSIP helm/charts deployment due to dependencies issues
+      #- name: Create kind v1.21.1 cluster
+      #  uses: helm/kind-action@v1.4.0
+      #  with:
+      #    node_image: kindest/node:v1.21.1
+      #
+      #- name: Run chart-testing (install)
+      #  run: |
+      #    while read -r chart; do
+      #      echo -e "\nCHART: $chart\n";
+      #      ct install --config=.github/chart-testing-config.yaml --charts=$chart --remote=target_repo --target-branch=$TARGET_BRANCH;
+      #    done < ./list.txt

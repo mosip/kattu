@@ -42,7 +42,7 @@ on:
       ALLOW_ENV_EDIT:
         description: "Edit ENV"
         required: true
-        default: "true"
+        default: 'true'
         type: choice
         options:
           - false

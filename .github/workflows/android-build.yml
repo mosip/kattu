@@ -8,11 +8,9 @@ on:
         type: string
     secrets:
       DEBUG_KEYSTORE_ALIAS:
-        default: androiddebugkey
-        type: string
+        required: true
       DEBUG_KEYSTORE_PASSWORD:
-        default: "dummypassword"
-        type: string
+        required: true
 
 jobs:
   build-android:

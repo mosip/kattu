@@ -4,11 +4,11 @@ on:
   workflow_call:
     inputs:
       BETA_RELEASE:
-        default: "No"
+        default: "false"
         type: choice
         options:
-          - Yes
-          - No
+          - false
+          - true
       NODE_VERSION:
         default: "16.x"
         type: string

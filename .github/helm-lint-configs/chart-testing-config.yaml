@@ -1,0 +1,9 @@
+# See https://github.com/helm/chart-testing#configuration
+helm-extra-args: ''
+check-version-increment: true
+debug: true
+lint-conf: ./lintconf.yaml
+chart-yaml-schema: ./chart-schema.yaml
+chart-repos:
+  - bitnami=https://charts.bitnami.com/bitnami
+  - confluentinc=https://confluentinc.github.io/cp-helm-charts/

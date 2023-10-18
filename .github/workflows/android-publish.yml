@@ -120,7 +120,7 @@ jobs:
           INJI_ANDROID_PLAY_STORE_CONFIG_JSON: ${{ secrets.INJI_ANDROID_PLAY_STORE_CONFIG_JSON }}
 
       - name: Create build and upload to play console
-        if: ${{ inputs.BETA_RELEASE != 'Yes' }}
+        if: ${{ inputs.BETA_RELEASE != 'true' }}
         run: |
           cd android/scripts
           ./internal-build.sh
@@ -135,7 +135,7 @@ jobs:
           BUILD_DESCRIPTION: ${{ inputs.BUILD_DESCRIPTION }}
 
       - name: Create Beta build and upload to play console
-        if: ${{ inputs.BETA_RELEASE == 'Yes' }}
+        if: ${{ inputs.BETA_RELEASE == 'true' }}
         run: |
           cd android/scripts
           ./beta-build.sh

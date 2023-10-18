@@ -8,6 +8,8 @@ on:
         required: true
       SONAR_ORGANIZATION:
         required: true
+      SLACK_URL:
+        required: true
 
 jobs:
   build:
@@ -28,6 +30,14 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
           SONAR_ORGANIZATION: ${{ secrets.SONAR_ORGANIZATION }}
+      
+      - uses: 8398a7/action-slack@v3
+        if: failure()
+        with:
+          status: ${{ job.status }}
+          fields: repo,message,author,commit,workflow,job
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_URL }}
       # If you wish to fail your job when the Quality Gate is red, uncomment the
       # following lines. This would typically be used to fail a deployment.
       # - uses: sonarsource/sonarqube-quality-gate-action@master

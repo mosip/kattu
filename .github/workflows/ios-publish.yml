@@ -106,7 +106,7 @@ jobs:
           cd ios
           fastlane build_app
 
-      - name: Upload Inji.app artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v3.1.1
         with:
           name: Inji
@@ -133,17 +133,12 @@ jobs:
           APPLE_KEY_CONTENT: "${{ secrets.APPLE_KEY_CONTENT }}"
           SLACK_URL: "${{ secrets.SLACK_WEBHOOK_DEVOPS }}"
           MATCH_PASSWORD: "${{ secrets.MATCH_PASSWORD }}"
+          MIMOTO_HOST: ${{ inputs.MIMOTO_HOST }}
+          ESIGNET_HOST: ${{ inputs.ESIGNET_HOST }}
           APPLICATION_THEME: ${{ inputs.APPLICATION_THEME }}
+          CREDENTIAL_REGISTRY_EDIT: ${{ inputs.CREDENTIAL_REGISTRY_EDIT }}
           TESTFLIGHT_INTERNAL_TESTERS_GROUP: ${{ inputs.TESTFLIGHT_INTERNAL_TESTERS_GROUP }}
           TESTFLIGHT_BETA_APP_DESCRIPTION: ${{ inputs.TESTFLIGHT_BETA_APP_DESCRIPTION }}
-
-      - uses: 8398a7/action-slack@v3
-        if: failure()
-        with:
-          status: ${{ job.status }}
-          fields: repo,message,author,commit,workflow,job
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_URL }}
 
       - name: Upload Runner Log on Failure
         if: failure()
@@ -152,3 +147,11 @@ jobs:
           name: runner-log
           path: /Users/runner/Library/Logs/gym/
           retention-days: 1
+
+      - uses: 8398a7/action-slack@v3
+        if: failure()
+        with:
+          status: ${{ job.status }}
+          fields: repo,message,author,commit,workflow,job
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_URL }}

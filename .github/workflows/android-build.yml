@@ -6,8 +6,10 @@ on:
       NODE_VERSION:
         default: "16.x"
         type: string
+    secrets:
       DEBUG_KEYSTORE_ALIAS:
         default: androiddebugkey
+        type: string
       DEBUG_KEYSTORE_PASSWORD:
         default: "dummypassword"
         type: string
@@ -43,13 +45,13 @@ jobs:
           -keystore android/app/debug.keystore \
           -dname "CN=io.mosip.residentapp,OU=,O=,L=,S=,C=US"
         env:
-          DEBUG_KEYSTORE_PASSWORD: ${{ inputs.DEBUG_KEYSTORE_PASSWORD }}
-          DEBUG_KEYSTORE_ALIAS: ${{ inputs.DEBUG_KEYSTORE_ALIAS }}
+          DEBUG_KEYSTORE_PASSWORD: ${{ secrets.DEBUG_KEYSTORE_PASSWORD }}
+          DEBUG_KEYSTORE_ALIAS: ${{ secrets.DEBUG_KEYSTORE_ALIAS }}
 
       - name: Create Build
         run: |
           cd android/scripts
           ./android-build.sh
         env:
-          DEBUG_KEYSTORE_ALIAS: ${{ inputs.DEBUG_KEYSTORE_ALIAS }}
-          DEBUG_KEYSTORE_PASSWORD: ${{ inputs.DEBUG_KEYSTORE_PASSWORD }}
+          DEBUG_KEYSTORE_ALIAS: ${{ secrets.DEBUG_KEYSTORE_ALIAS }}
+          DEBUG_KEYSTORE_PASSWORD: ${{ secrets.DEBUG_KEYSTORE_PASSWORD }}

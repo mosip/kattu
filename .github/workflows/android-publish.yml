@@ -4,7 +4,9 @@ on:
   workflow_call:
     inputs:
       BETA_RELEASE:
-        default: "false"
+        description: 'Beta release?'
+        required: true
+        default: 'false'
         type: choice
         options:
           - false

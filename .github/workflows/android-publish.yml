@@ -86,7 +86,7 @@ jobs:
       - name: Create Build
         run: |
           cd android/scripts
-          ./verify-build.sh
+          ./android-build.sh
         env:
           MIMOTO_HOST: ${{ inputs.MIMOTO_HOST }}
           ESIGNET_HOST: ${{ inputs.ESIGNET_HOST }}

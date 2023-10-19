@@ -20,7 +20,7 @@ on:
         description: "Application Theme"
         required: true
         type: string
-      CREDENTIAL_REGISTRY_EDIT:
+      ALLOW_ENV_EDIT:
         description: "Edit Registry"
         required: true
         type: string
@@ -121,7 +121,7 @@ jobs:
           MIMOTO_HOST: ${{ inputs.MIMOTO_HOST }}
           ESIGNET_HOST: ${{ inputs.ESIGNET_HOST }}
           APPLICATION_THEME: ${{ inputs.APPLICATION_THEME }}
-          CREDENTIAL_REGISTRY_EDIT: ${{ inputs.CREDENTIAL_REGISTRY_EDIT }}
+          CREDENTIAL_REGISTRY_EDIT: ${{ inputs.ALLOW_ENV_EDIT }}
           TESTFLIGHT_INTERNAL_TESTERS_GROUP: ${{ inputs.TESTFLIGHT_INTERNAL_TESTERS_GROUP }}
           TESTFLIGHT_BETA_APP_DESCRIPTION: ${{ inputs.TESTFLIGHT_BETA_APP_DESCRIPTION }}
 

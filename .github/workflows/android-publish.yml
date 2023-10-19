@@ -6,16 +6,13 @@ on:
       BETA_RELEASE:
         description: 'Beta release?'
         required: true
-        default: 'false'
-        type: choice
-        options:
-          - false
-          - true
+        type: string
       NODE_VERSION:
         default: "16.x"
         type: string
       RELEASE_KEYSTORE_ALIAS:
         default: androidreleasekey
+        type: string
       MIMOTO_HOST:
         description: "Mimoto backend service URL"
         required: true
@@ -29,11 +26,7 @@ on:
       APPLICATION_THEME:
         description: "Application Theme"
         required: true
-        default: "orange"
-        type: choice
-        options:
-          - orange
-          - purple
+        type: string
       BUILD_DESCRIPTION:
         description: "What to test"
         required: true
@@ -42,11 +35,7 @@ on:
       ALLOW_ENV_EDIT:
         description: "Edit ENV"
         required: true
-        default: 'true'
-        type: choice
-        options:
-          - false
-          - true
+        type: string
       BUILD_NAME:
         description: "Build App For"
         required: true

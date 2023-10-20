@@ -3,19 +3,17 @@ name:  Manual workflow to transfer docker images
 on:
   workflow_call:
     inputs:
-      USERNAME:
-        description: 'provide docker hub username'
-        required: true
-        default: ''
-        type: string
       DESTINATION_ORGANIZATION:
-        description: 'provide docker hub destination org'
+        description: 'Provide Docker Hub destination org'
         required: true
         default: ''
         type: string
     secrets:
+      USERNAME:
+        description: 'Provide Docker Hub username'
+        required: true
       TOKEN:
-        description: 'provide docker hub token'
+        description: 'Provide Docker Hub token'
         required: true
       SLACK_WEBHOOK_URL:
         required: true
@@ -31,7 +29,7 @@ jobs:
           cd release/vidivi
           echo "PWD: $( pwd )"
           echo "LS : $( ls ) "
-          sed -i "s/username:.*/username: ${{ github.event.inputs.USERNAME }}/g" config.yml
+          sed -i "s/username:.*/username: ${{ secrets.USERNAME }}/g" config.yml
           sed -i "s/token:.*/token: ${{ secrets.TOKEN }}/g" config.yml
           sed -i "s/destination_organization.*/destination_organization: ${{ github.event.inputs.DESTINATION_ORGANIZATION }}/g" config.yml
       - name: push images

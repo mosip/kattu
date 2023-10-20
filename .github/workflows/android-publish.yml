@@ -83,6 +83,27 @@ jobs:
         env:
           ANDROID_KEYSTORE_FILE: ${{ secrets.ANDROID_KEYSTORE_FILE }}
 
+      - name: Create Build
+        run: |
+          npx jetify
+          cd android
+          ./gradlew :app:assembleMosipRelease
+          
+        env:
+          MIMOTO_HOST: ${{ inputs.MIMOTO_HOST }}
+          ESIGNET_HOST: ${{ inputs.ESIGNET_HOST }}
+          APPLICATION_THEME: ${{ inputs.APPLICATION_THEME }}
+          RELEASE_KEYSTORE_ALIAS: ${{ inputs.RELEASE_KEYSTORE_ALIAS }}
+          RELEASE_KEYSTORE_PASSWORD: "${{secrets.RELEASE_KEYSTORE_PASSWORD}}"
+          CREDENTIAL_REGISTRY_EDIT: ${{ inputs.ALLOW_ENV_EDIT }}
+
+      - name: Upload Artifact to Actions
+        uses: actions/upload-artifact@v3.1.1
+        with:
+          name: ${{ inputs.BUILD_NAME }}
+          path: android/app/build/outputs/apk/mosip/release/Inji_universal.apk
+          retention-days: 10
+
       - name: Create Google Play Config file
         run: |
           cd android
@@ -120,13 +141,6 @@ jobs:
           CREDENTIAL_REGISTRY_EDIT: ${{ inputs.ALLOW_ENV_EDIT }}
           SLACK_URL: "${{ secrets.SLACK_URL }}"
           BUILD_DESCRIPTION: ${{ inputs.BUILD_DESCRIPTION }}
-
-      - name: Upload Artifact to Actions
-        uses: actions/upload-artifact@v3.1.1
-        with:
-          name: ${{ inputs.BUILD_NAME }}
-          path: android/app/build/outputs/apk/mosip/release/Inji_universal.apk
-          retention-days: 10
 
       - uses: 8398a7/action-slack@v3
         if: failure()

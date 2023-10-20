@@ -80,15 +80,15 @@ jobs:
         with:
           node-version: ${{ inputs.NODE_VERSION }}
 
-      - name: Install npm dependencies
-        run: |
-          npm install
+      # - name: Install npm dependencies
+      #   run: |
+      #     npm install
 
-      - name: Install Pod
-        run: |
-          cd ios
-          pod install
-          pod install
+      # - name: Install Pod
+      #   run: |
+      #     cd ios
+      #     pod install
+      #     pod install
 
       # - name: Build iOS for automation on simulator
       #   run: |
@@ -104,8 +104,29 @@ jobs:
 
       - name: Deploy iOS Beta to TestFlight
         run: |
-          cd ios
-          fastlane beta
+          echo "APP_STORE_CONNECT_TEAM_ID: $APP_STORE_CONNECT_TEAM_ID"
+          echo "DEVELOPER_APP_ID: $DEVELOPER_APP_ID"
+          echo "INJI_IOS_DEVELOPER_APP_IDENTIFIER: $INJI_IOS_DEVELOPER_APP_IDENTIFIER"
+          echo "INJI_IOS_DEVELOPER_PORTAL_TEAM_ID: $INJI_IOS_DEVELOPER_PORTAL_TEAM_ID"
+          echo "INJI_IOS_FASTLANE_APPLE_ID: $INJI_IOS_FASTLANE_APPLE_ID"
+          echo "INJI_IOS_FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD: $INJI_IOS_FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD"
+          echo "GIT_AUTHORIZATION: $GIT_AUTHORIZATION"
+          echo "INJI_IOS_PROVISIONING_PROFILE_SPECIFIER: $INJI_IOS_PROVISIONING_PROFILE_SPECIFIER"
+          echo "INJI_IOS_TEMP_KEYCHAIN_PASSWORD: $INJI_IOS_TEMP_KEYCHAIN_PASSWORD"
+          echo "INJI_IOS_TEMP_KEYCHAIN_USER: $INJI_IOS_TEMP_KEYCHAIN_USER"
+          echo "APPLE_KEY_ID: $APPLE_KEY_ID"
+          echo "APPLE_ISSUER_ID: $APPLE_ISSUER_ID"
+          echo "APPLE_KEY_CONTENT: $APPLE_KEY_CONTENT"
+          echo "SLACK_URL: $SLACK_URL"
+          echo "MATCH_PASSWORD: $MATCH_PASSWORD"
+          echo "MIMOTO_HOST: $MIMOTO_HOST"
+          echo "ESIGNET_HOST: $ESIGNET_HOST"
+          echo "APPLICATION_THEME: $APPLICATION_THEME"
+          echo "CREDENTIAL_REGISTRY_EDIT: $CREDENTIAL_REGISTRY_EDIT"
+          echo "TESTFLIGHT_INTERNAL_TESTERS_GROUP: $TESTFLIGHT_INTERNAL_TESTERS_GROUP"
+          echo "TESTFLIGHT_BETA_APP_DESCRIPTION: $TESTFLIGHT_BETA_APP_DESCRIPTION"
+          # cd ios
+          # fastlane beta
         env:
           APP_STORE_CONNECT_TEAM_ID: "${{ secrets.APP_STORE_CONNECT_TEAM_ID }}"
           DEVELOPER_APP_ID: "${{ secrets.DEVELOPER_APP_ID }}"

@@ -90,17 +90,17 @@ jobs:
           pod install
           pod install
 
-      - name: Build iOS for automation on simulator
-        run: |
-          cd ios
-          fastlane build_app
+      # - name: Build iOS for automation on simulator
+      #   run: |
+      #     cd ios
+      #     fastlane build_app
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v3.1.1
-        with:
-          name: Inji
-          path: ios/fastlane/Inji_app_file/Products/Applications/
-          retention-days: 10
+      # - name: Upload artifact
+      #   uses: actions/upload-artifact@v3.1.1
+      #   with:
+      #     name: Inji
+      #     path: ios/fastlane/Inji_app_file/Products/Applications/
+      #     retention-days: 10
 
       - name: Deploy iOS Beta to TestFlight
         run: |

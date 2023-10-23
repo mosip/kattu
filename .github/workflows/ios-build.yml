@@ -10,13 +10,13 @@ on:
 jobs:
   build_ios:
     name: Building the IPA
-    runs-on: macos-14
+    runs-on: macos-13
 
     steps:
       - uses: actions/checkout@v3.1.0
       - uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '15.0'
+          xcode-version: '14.2'
           
       - uses: actions/setup-node@v3
         with:

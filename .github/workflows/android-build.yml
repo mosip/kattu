@@ -38,8 +38,8 @@ jobs:
           -keyalg RSA \
           -keysize 2048 \
           -validity 10000 \
-          -storepass $DEBUG_KEYSTORE_PASSWORD \
-          -keypass $DEBUG_KEYSTORE_PASSWORD \
+          -storepass 'dummypassword' \
+          -keypass 'dummypassword' \
           -alias $DEBUG_KEYSTORE_ALIAS \
           -keystore android/app/debug.keystore \
           -dname "CN=io.mosip.residentapp,OU=,O=,L=,S=,C=US"

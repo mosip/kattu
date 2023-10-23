@@ -52,5 +52,5 @@ jobs:
           cd android/scripts
           ./android-build.sh
         env:
-          DEBUG_KEYSTORE_ALIAS: ${{ secrets.DEBUG_KEYSTORE_ALIAS }}
+          DEBUG_KEYSTORE_ALIAS: ${{ inputs.DEBUG_KEYSTORE_ALIAS }}
           DEBUG_KEYSTORE_PASSWORD: '${{ secrets.DEBUG_KEYSTORE_PASSWORD }}'

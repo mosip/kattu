@@ -38,13 +38,13 @@ jobs:
           -keyalg RSA \
           -keysize 2048 \
           -validity 10000 \
-          -storepass 'password' \
-          -keypass 'password' \
+          -storepass $DEBUG_KEYSTORE_PASSWORD \
+          -keypass $DEBUG_KEYSTORE_PASSWORD \
           -alias $DEBUG_KEYSTORE_ALIAS \
           -keystore android/app/debug.keystore \
           -dname "CN=io.mosip.residentapp,OU=,O=,L=,S=,C=US"
         env:
-          DEBUG_KEYSTORE_PASSWORD: ${{ secrets.DEBUG_KEYSTORE_PASSWORD }}
+          DEBUG_KEYSTORE_PASSWORD: '${{ secrets.DEBUG_KEYSTORE_PASSWORD }}'
           DEBUG_KEYSTORE_ALIAS: ${{ inputs.DEBUG_KEYSTORE_ALIAS }}
 
       - name: Create Build
@@ -53,4 +53,4 @@ jobs:
           ./android-build.sh
         env:
           DEBUG_KEYSTORE_ALIAS: ${{ secrets.DEBUG_KEYSTORE_ALIAS }}
-          DEBUG_KEYSTORE_PASSWORD: "${{ secrets.DEBUG_KEYSTORE_PASSWORD }}"
+          DEBUG_KEYSTORE_PASSWORD: '${{ secrets.DEBUG_KEYSTORE_PASSWORD }}'

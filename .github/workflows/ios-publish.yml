@@ -72,10 +72,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3.1.0
-      - uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: '14.3.1'
-        
       - uses: actions/setup-node@v3
         with:
           node-version: ${{ inputs.NODE_VERSION }}
@@ -90,43 +86,10 @@ jobs:
           pod install
           pod install
 
-      - name: Build iOS for automation on simulator
-        run: |
-          cd ios
-          fastlane build_app
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v3.1.1
-        with:
-          name: Inji
-          path: ios/fastlane/Inji_app_file/Products/Applications/
-          retention-days: 10
-
       - name: Deploy iOS Beta to TestFlight
         run: |
-          echo "APP_STORE_CONNECT_TEAM_ID: $APP_STORE_CONNECT_TEAM_ID"
-          echo "DEVELOPER_APP_ID: $DEVELOPER_APP_ID"
-          echo "INJI_IOS_DEVELOPER_APP_IDENTIFIER: $INJI_IOS_DEVELOPER_APP_IDENTIFIER"
-          echo "INJI_IOS_DEVELOPER_PORTAL_TEAM_ID: $INJI_IOS_DEVELOPER_PORTAL_TEAM_ID"
-          echo "INJI_IOS_FASTLANE_APPLE_ID: $INJI_IOS_FASTLANE_APPLE_ID"
-          echo "INJI_IOS_FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD: $INJI_IOS_FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD"
-          echo "GIT_AUTHORIZATION: $GIT_AUTHORIZATION"
-          echo "INJI_IOS_PROVISIONING_PROFILE_SPECIFIER: $INJI_IOS_PROVISIONING_PROFILE_SPECIFIER"
-          echo "INJI_IOS_TEMP_KEYCHAIN_PASSWORD: $INJI_IOS_TEMP_KEYCHAIN_PASSWORD"
-          echo "INJI_IOS_TEMP_KEYCHAIN_USER: $INJI_IOS_TEMP_KEYCHAIN_USER"
-          echo "APPLE_KEY_ID: $APPLE_KEY_ID"
-          echo "APPLE_ISSUER_ID: $APPLE_ISSUER_ID"
-          echo "APPLE_KEY_CONTENT: $APPLE_KEY_CONTENT"
-          echo "SLACK_URL: $SLACK_URL"
-          echo "MATCH_PASSWORD: $MATCH_PASSWORD"
-          echo "MIMOTO_HOST: $MIMOTO_HOST"
-          echo "ESIGNET_HOST: $ESIGNET_HOST"
-          echo "APPLICATION_THEME: $APPLICATION_THEME"
-          echo "CREDENTIAL_REGISTRY_EDIT: $CREDENTIAL_REGISTRY_EDIT"
-          echo "TESTFLIGHT_INTERNAL_TESTERS_GROUP: $TESTFLIGHT_INTERNAL_TESTERS_GROUP"
-          echo "TESTFLIGHT_BETA_APP_DESCRIPTION: $TESTFLIGHT_BETA_APP_DESCRIPTION"
-          # cd ios
-          # fastlane beta
+          cd ios
+          fastlane beta
         env:
           APP_STORE_CONNECT_TEAM_ID: "${{ secrets.APP_STORE_CONNECT_TEAM_ID }}"
           DEVELOPER_APP_ID: "${{ secrets.DEVELOPER_APP_ID }}"
@@ -149,6 +112,18 @@ jobs:
           CREDENTIAL_REGISTRY_EDIT: ${{ inputs.ALLOW_ENV_EDIT }}
           TESTFLIGHT_INTERNAL_TESTERS_GROUP: ${{ inputs.TESTFLIGHT_INTERNAL_TESTERS_GROUP }}
           TESTFLIGHT_BETA_APP_DESCRIPTION: ${{ inputs.TESTFLIGHT_BETA_APP_DESCRIPTION }}
+
+      - name: Build iOS for automation on simulator
+        run: |
+          cd ios
+          fastlane build_app
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3.1.1
+        with:
+          name: Inji
+          path: ios/fastlane/Inji_app_file/Products/Applications/
+          retention-days: 10
 
       - name: Upload Runner Log on Failure
         if: failure()

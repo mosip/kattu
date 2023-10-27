@@ -56,4 +56,4 @@ jobs:
           ./android-build.sh
         env:
           DEBUG_KEYSTORE_ALIAS: ${{ inputs.DEBUG_KEYSTORE_ALIAS }}
-          DEBUG_KEYSTORE_PASSWORD: ${{ secrets.DEBUG_KEYSTORE_PASSWORD }}
+          DEBUG_KEYSTORE_PASSWORD: ${{ secrets.DEBUG_KEYSTORE_PASSWORD || env.DUMMY_DEBUG_KEYSTORE_PASSWORD }}

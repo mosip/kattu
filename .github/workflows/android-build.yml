@@ -1,5 +1,8 @@
 name: Android Build
 
+env:
+  DUMMY_DEBUG_KEYSTORE_PASSWORD: 'password'
+  
 on:
   workflow_call:
     inputs:
@@ -44,7 +47,7 @@ jobs:
           -keystore android/app/debug.keystore \
           -dname "CN=io.mosip.residentapp,OU=,O=,L=,S=,C=US"
         env:
-          DEBUG_KEYSTORE_PASSWORD: ${{ secrets.DEBUG_KEYSTORE_PASSWORD }}
+          DEBUG_KEYSTORE_PASSWORD: ${{ secrets.DEBUG_KEYSTORE_PASSWORD || env.DUMMY_DEBUG_KEYSTORE_PASSWORD }}
           DEBUG_KEYSTORE_ALIAS: ${{ inputs.DEBUG_KEYSTORE_ALIAS }}
 
       - name: Create Build

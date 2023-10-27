@@ -8,15 +8,16 @@ on:
         type: string
       ANDROID_LOCATION:
         description: 'ANDROID LOCATION'
-        required: true
+        required: false
         type: string
+        default: false
       BUILD_ARTIFACT:
         description: 'SERVICE NAME'
         required: true
         type: string
       GRADLEW_ARGS:
-        description: 'Provide gradlew command arguments'
-        required: true
+        description: 'Provide gradlew arguments'
+        required: false
         type: string
     secrets:
       SLACK_WEBHOOK_URL:
@@ -42,13 +43,14 @@ jobs:
         run: cd ${{ inputs.SERVICE_LOCATION }} && npm install
 
       - name: Build APK via Gradlew
+        if: ${{ inputs.ANDROID_LOCATION != 'false' }}
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_LOCATION }}
           sed -i -e 's/\r$//' ./gradlew
           chmod +x ./gradlew
           ./gradlew ${{ inputs.GRADLEW_ARGS }}
 
-      - name: Verify the build Gradlew application
+      - name: Verify the build application
         run: cd ${{ inputs.SERVICE_LOCATION }} && npm run verify
 
       - name: Find *.apk files

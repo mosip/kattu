@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       NODE_VERSION:
-        default: "16.x"
+        default: "18.x"
         type: string
 
 jobs:

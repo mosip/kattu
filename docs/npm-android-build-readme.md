@@ -6,7 +6,6 @@ It includes tasks like checking out the repository, installing dependencies, bui
 ## Inputs
 
 This workflow accepts the following inputs:
-
 - `SERVICE_LOCATION` (required): The location of the project to be built.
 - `ANDROID_LOCATION` (optional, default: 'false'): The subdirectory where the Android project is located within the service location.
 - `BUILD_ARTIFACT` (required): The name of the artifact to be created.
@@ -15,19 +14,16 @@ This workflow accepts the following inputs:
 ## Secrets
 
 This workflow requires the following secret:
-
 - `SLACK_WEBHOOK_URL` (required): Slack webhook URL for notifications.
 
 ## Environment Variables
 
 This workflow uses the following environment variable:
-
 - `ANDROID_HOME`: The path to the Android SDK installation directory.
 
 ## Example Usage
 
 Here is an example workflow that uses the `Android Build via Gradlew` workflow:
-
 ```yaml
 name: Gradlew build
 on:

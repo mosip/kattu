@@ -9,7 +9,6 @@ The workflow can be customized to fit your release process, such as handling Mav
 ## Inputs
 
 This workflow accepts the following inputs:
-
 - `MESSAGE` (optional, default: 'Release Preparation'): A custom message that describes the purpose of the workflow run. You can use this to differentiate between release and pre-release preparations.
 - `RELEASE_TAG` (required): The tag associated with the release you're preparing.
 - `SNAPSHOT_TAG` (required): The tag that needs to be replaced during the preparation.
@@ -17,15 +16,13 @@ This workflow accepts the following inputs:
 
 ## Secrets
 
-To use this workflow, you need to provide the following secrets:
-
+This workflow requires the following secrets to be set in your GitHub repository:
 - `SLACK_WEBHOOK_URL` (required): The Slack webhook URL for sending notifications about the workflow's progress and outcome.
 - `ACTION_PAT` (required): A GitHub Personal Access Token (PAT) with the necessary permissions to create pull requests in your repository.
 
 ## Example Usage
 
 To use this workflow, you can create an example workflow file in your repository, such as `.github/workflows/release-preparation.yml`, with the following content:
-
 ```yaml
 name: Release/pre-release Preparation.
 

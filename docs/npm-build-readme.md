@@ -7,20 +7,17 @@ This workflow automates the build process for NPM-based projects. It's designed 
 ## Inputs
 
 This workflow requires the following inputs:
-
 - `BUILD_ARTIFACT` (required): The name of the build artifact that will be generated.
 - `SERVICE_LOCATION` (required): The location of the project to be built.
 
 ## Secrets
 
-To use this workflow, you need to provide the following secret:
-
+This workflow requires the following secrets to be set in your GitHub repository:
 - `SLACK_WEBHOOK_URL` (required): A Slack webhook URL for notifications. This enables the workflow to report status updates to a Slack channel.
 
 ## Example Usage
 
 You can include this workflow in your repository as follows:
-
 ```yaml
 name: NPM Build Workflow Example
 

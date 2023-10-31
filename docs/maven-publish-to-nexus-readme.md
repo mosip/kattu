@@ -32,7 +32,6 @@ This workflow requires the following secrets to be set:
 ## Example Usage
 
 Here is an example workflow that uses the `Publish to Nexus` workflow:
-
 ```yaml
 name: Maven Package upon a push
 

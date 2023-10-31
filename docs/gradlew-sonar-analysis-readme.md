@@ -1,12 +1,15 @@
 # Sonar Analysis via Gradlew Workflow
 
 ## Purpose
+
 This workflow is designed to perform the following tasks:
 1. Analyze a project using SonarCloud with Gradlew.
 2. Generate code quality reports.
 3. Send Slack notifications in case of job failure.
 
 ## Inputs
+
+This workflow accepts the following inputs:
 - `SERVICE_LOCATION`: The location of the service or project.
 - `ANDROID_LOCATION`: The location of the Android project within the service.
 - `SONAR_URL`: (Optional) The URL of the Sonar server (default: https://sonarcloud.io).
@@ -15,13 +18,15 @@ This workflow is designed to perform the following tasks:
 - `SONAR_ARGS`: (Optional) Additional arguments for Sonar analysis.
 
 ## Secrets
+
+This workflow requires the following secrets to be set in your GitHub repository:
 - `SONAR_TOKEN`: The authentication token for accessing SonarQube.
 - `SONAR_ORGANIZATION`: The organization name on SonarQube.
 - `SLACK_WEBHOOK_URL`: The URL for sending Slack notifications.
 
 ## Example Usage
-Here is an example workflow that uses the `Sonar Analysis via Gradlew` workflow:
 
+Here is an example workflow that uses the `Sonar Analysis via Gradlew` workflow:
 ```yaml
 name: Gradlew sonar-analysis
 on:

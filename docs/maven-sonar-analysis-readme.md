@@ -16,7 +16,10 @@ This workflow accepts the following inputs:
 - `SERVICE_LOCATION` (required): The location of the service to be analyzed.
 - `SONAR_URL` (optional, default: 'https://sonarcloud.io'): URL of the Sonar server for analysis.
 - `PROJECT_KEY` (optional, default: "mosip_${{ github.event.repository.name }}"): Project key for Sonar analysis. 
-## Secrets:
+
+## Secrets
+
+This workflow requires the following secrets to be set in your GitHub repository:
 - `SONAR_TOKEN` (required): Token for SonarCloud. 
 - `ORG_KEY` (required): Organization key for SonarCloud.
 - `OSSRH_USER` (required): User credentials for the OSSRH server.
@@ -28,7 +31,6 @@ This workflow accepts the following inputs:
 ## Example Usage
 
 Here is an example workflow that uses the `Maven Sonar Analysis` workflow:
-
 ```yaml
 name: Maven Package upon a push
 

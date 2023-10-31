@@ -2,27 +2,26 @@
 
 ## Purpose
 
-This workflow automates the process of publishing an NPM package to the NPM registry. It's designed to simplify the publication process for NPM packages and allows you to control the publishing based on your project's requirements. The workflow handles NPM package installation, Android build, verification, publishing, tagging, and provides Slack notifications.
+This workflow automates the process of publishing an NPM package to the NPM registry.
+It's designed to simplify the publication process for NPM packages and allows you to control the publishing based on your project's requirements.
+The workflow handles NPM package installation, Android build, verification, publishing, tagging, and provides Slack notifications.
 
 ## Inputs
 
-This workflow requires the following inputs:
-
+This workflow accepts the following inputs:
 - `SERVICE_LOCATION` (required): The location of the NPM package to be published.
 - `ANDROID_LOCATION` (optional): The location of the Android build if applicable, or set to 'false' if not needed.
 - `GRADLEW_ARGS` (optional): Additional arguments for the Android Gradle build.
 
 ## Secrets
 
-To use this workflow, you need to provide the following secrets:
-
+This workflow requires the following secrets to be set in your GitHub repository:
 - `NPM_AUTH_TOKEN` (required): The NPM authentication token to allow publishing to the NPM registry.
 - `SLACK_WEBHOOK_URL` (required): A Slack webhook URL for notifications. This enables the workflow to report status updates to a Slack channel.
 
 ## Example Usage
 
 You can include this workflow in your repository as follows:
-
 ```yaml
 name: Gradlew build, publish to npm registry
 on:

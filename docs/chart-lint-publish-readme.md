@@ -1,6 +1,7 @@
 # chart-lint-publish
 
 ## Purpose
+
 This workflow is designed to perform the following tasks:
 1. Validate Helm charts in pull requests by checking for changes in the Helm chart directory.
 2. Generate a list of charts that are modified in the base branch compared to the pull request branch.
@@ -8,6 +9,8 @@ This workflow is designed to perform the following tasks:
 4. Publish Helm charts to a Helm chart repository on successful validation.
 
 ## Inputs
+
+This workflow accepts the following inputs:
 - `CHARTS_DIR` (required, string): The directory containing Helm charts.
 - `CHARTS_URL` (required, string): The URL of the Helm chart repository.
 - `REPOSITORY` (required, string): The name of the GitHub repository.
@@ -19,7 +22,10 @@ This workflow is designed to perform the following tasks:
 - `IGNORE_CHARTS` (required, string): A list of charts to be ignored during validation.
 - `CHART_PUBLISH` (required, string): Set to "NO" to skip chart publishing, or "YES" to enable chart publishing.
 - `INCLUDE_ALL_CHARTS` (required, string): Set to "YES" to include all charts, or "NO" to exclude them.
+
 ## Secrets
+
+This workflow requires the following secrets to be set in your GitHub repository:
 - `TOKEN` (required): GitHub token to publish helm charts to the specific repository.
 - `SLACK_WEBHOOK_URL` (required): Slack webhook URL for notifications.
 
@@ -37,6 +43,7 @@ The workflow consists of the following steps:
     - This step includes linting and chart publication based on the input settings.
 
 ## Example Usage
+
 Here is an example workflow that uses the `chart-lint-publish` workflow:
 ```yaml
 name: Validate / Publish helm charts

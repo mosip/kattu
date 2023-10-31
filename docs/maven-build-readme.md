@@ -1,6 +1,8 @@
 # Maven Build Workflow
 
-This workflow is designed to automate the Maven build process for a specific service in the Mosip/Kattu project. It includes tasks related to setting up the build environment, building the project, and uploading artifacts. The workflow can be triggered when certain conditions are met.
+This workflow is designed to automate the Maven build process for a specific service in the `MOSIP` project.
+It includes tasks related to setting up the build environment, building the project, and uploading artifacts.
+The workflow can be triggered when certain conditions are met.
 
 ## Purpose
 
@@ -9,7 +11,7 @@ The purpose of this workflow is to perform the following tasks:
 - Perform checks related to the project's licenses, developers, and plugins.
 - Validate the `pom.xml` and `settings.xml` files.
 - Create an executable JAR and upload it as an artifact.
-- Notify via Slack in case of job failure.
+- Notify via Slack in case of job failures.
 
 ## Inputs
 
@@ -29,7 +31,6 @@ This workflow requires the following secrets to be set:
 ## Example Usage
 
 Here is an example workflow that uses the `Maven build` workflow:
-
 ```yaml
 name: Maven Package upon a push
 

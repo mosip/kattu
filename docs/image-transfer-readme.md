@@ -4,25 +4,28 @@ This workflow is designed to automate the process of transferring Docker images 
 It uses GitHub Actions to facilitate the image transfer.
 
 ## Purpose
+
 The purpose of this workflow is to perform the following tasks:
 
-1. Update the configuration file config.yml with Docker Hub credentials and the destination organization. 
+1. Update the configuration file `config.yml` with Docker Hub credentials and the destination organization.
 2. Push Docker images to the destination organization on Docker Hub. 
 3. Notify the status of the workflow via Slack.
 
 ## Inputs
+
+This workflow accepts the following inputs:
 - `DESTINATION_ORGANIZATION`(required): The Docker Hub destination organization where you want to transfer the images.
 
 ## Secrets
-This workflow requires the following secrets to be stored in your GitHub repository:
 
+This workflow requires the following secrets to be stored in your GitHub repository:
 - `USERNAME`: Destination accounts Docker Hub username.
 - `TOKEN`: Destination accounts Hub token for authentication.
 - `SLACK_WEBHOOK_URL`: The Slack webhook URL for notifications.
 
 ## Example Usage
-Here is an example workflow that uses the `Image transfer` workflow:
 
+Here is an example workflow that uses the `Image transfer` workflow:
 ```
 name:  Manual workflow to transfer images
 

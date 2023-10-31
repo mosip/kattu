@@ -18,6 +18,10 @@ on:
         description: 'Provide gradlew command arguments'
         required: true
         type: string
+      VERIFY_GRADLEW:
+        required: false
+        type: boolean
+        default: true
     secrets:
       SLACK_WEBHOOK_URL:
         required: true
@@ -49,6 +53,7 @@ jobs:
           ./gradlew ${{ inputs.GRADLEW_ARGS }}
 
       - name: Verify the build Gradlew application
+        if: ${{ inputs.VERIFY_GRADLEW == true }}
         run: cd ${{ inputs.SERVICE_LOCATION }} && npm run verify
 
       - name: Find *.apk files

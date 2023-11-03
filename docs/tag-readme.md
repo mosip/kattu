@@ -79,5 +79,5 @@ jobs:
       LATEST: ${{ inputs.LATEST }}
     secrets:
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
-      TOKEN: ${{ secrets.TOKEN }}
+      TOKEN: ${{ secrets.ACTION_PAT }}
 ```

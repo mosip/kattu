@@ -13,11 +13,15 @@ The workflow accepts the following inputs:
 - `BODY` (optional, default: 'Changes in this Release'): A custom message for the release body, describing the changes in this release.
 - `PRE_RELEASE` (required, default: False): A boolean (True/False) indicating whether the release is a pre-release or not.
 - `DRAFT` (optional, default: False): A boolean (True/False) indicating whether the release should be a draft.
+- `ONLY_TAG` (optional, string, default: false): Set to true if you want to create only a tag without a full release.
+- `BRANCH` (required, string): The name of the branch from which the release will be created.
+- `LATEST` (optional, string, default: true): Set too false to prevent marking the release as the latest.
 
 ## Secrets
 
 This workflow requires the following secrets to be set in your GitHub repository:
 - `SLACK_WEBHOOK_URL` (required): The Slack webhook URL for sending notifications about the workflow's progress and outcome.
+- `TOKEN` (required): The token required for authenticating and authorizing the release operation.
 
 ## Example Usage
 
@@ -39,14 +43,28 @@ on:
         type: string
       PRE_RELEASE:
         description: 'Pre-release? True/False'
-        required: true
-        default: False
+        required: false
+        default: 'false'
         type: string
       DRAFT:
         description: 'Draft? True/False'
         required: false
-        default: False
+        default: 'false'
         type: string
+      ONLY_TAG:
+        description: "Only Tag"
+        required: false
+        type: string
+        default: 'false'
+      BRANCH:
+        description: 'Branch name'
+        required: true
+        type: string
+      LATEST:
+        description: 'Latest release'
+        required: false
+        type: string
+        default: 'true'
 
 jobs:
   tag-branch:
@@ -56,6 +74,10 @@ jobs:
       BODY: ${{ inputs.BODY }}
       PRE_RELEASE: ${{ inputs.PRE_RELEASE }}
       DRAFT: ${{ inputs.DRAFT }}
+      ONLY_TAG: ${{ inputs.ONLY_TAG }}
+      BRANCH: ${{ inputs.BRANCH }}
+      LATEST: ${{ inputs.LATEST }}
     secrets:
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+      TOKEN: ${{ secrets.TOKEN }}
 ```

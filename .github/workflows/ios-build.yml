@@ -14,6 +14,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3.1.0
+      - name: Xcode Select Version
+        uses: mobiledevops/xcode-select-version-action@v1
+        with:
+          xcode-select-version: 14.2
+          
       - uses: actions/setup-node@v3
         with:
           node-version: '18.x'

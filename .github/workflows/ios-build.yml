@@ -31,4 +31,4 @@ jobs:
       - name: Build iOS for automation on simulator
         run: |
           cd ios
-          fastlane build_app_for_automation_on_simulator
+          fastlane build_app

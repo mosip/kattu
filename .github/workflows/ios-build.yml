@@ -31,4 +31,4 @@ jobs:
       - name: Build iOS
         run: |
           cd ios
-          fastlane build_ios_app
+          fastlane ios_app_build

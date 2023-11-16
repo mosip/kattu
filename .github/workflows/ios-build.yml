@@ -1,0 +1,34 @@
+name: IOS Build
+
+on:
+  workflow_call:
+    inputs:
+      NODE_VERSION:
+        default: "18.x"
+        type: string
+
+jobs:
+  build_ios:
+    name: Building the IPA
+    runs-on: macos-13
+
+    steps:
+      - uses: actions/checkout@v3.1.0
+      - uses: actions/setup-node@v3
+        with:
+          node-version: ${{ inputs.NODE_VERSION }}
+
+      - name: Install npm dependencies
+        run: |
+          npm install
+
+      - name: Install Pod
+        run: |
+          cd ios
+          pod install
+          pod install
+
+      - name: Build iOS
+        run: |
+          cd ios
+          fastlane ios_app_build

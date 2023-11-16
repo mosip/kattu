@@ -9,19 +9,14 @@ on:
 
 jobs:
   build_ios:
-    name: IOS test run
+    name: Building the IPA
     runs-on: macos-13
 
     steps:
       - uses: actions/checkout@v3.1.0
-      - name: Xcode Select Version
-        uses: mobiledevops/xcode-select-version-action@v1
-        with:
-          xcode-select-version: 14.2
-          
       - uses: actions/setup-node@v3
         with:
-          node-version: '18.x'
+          node-version: ${{ inputs.NODE_VERSION }}
 
       - name: Install npm dependencies
         run: |
@@ -33,7 +28,7 @@ jobs:
           pod install
           pod install
 
-      - name: Build iOS for automation on simulator
+      - name: Build iOS
         run: |
           cd ios
-          fastlane build_app
+          fastlane build_ios_app

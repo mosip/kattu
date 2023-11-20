@@ -3,8 +3,8 @@ name: Android Publish
 on:
   workflow_call:
     inputs:
-      BETA_RELEASE:
-        description: 'Beta release?'
+      RELEASE:
+        description: 'Internal/Beta'
         required: true
         type: string
       NODE_VERSION:
@@ -56,7 +56,7 @@ on:
         required: true
         default: "android"
         type: string
-      BUILD_SCRIPT:
+      BUILD_SCRIPT_LOCATION:
         description: "Android build script Location"
         required: true
         default: "scripts"
@@ -83,10 +83,10 @@ jobs:
           node-version: ${{ inputs.NODE_VERSION }}
 
       - name: Check for git tag
-        if: ${{ inputs.BETA_RELEASE == 'Yes' }}
+        if: ${{ inputs.RELEASE == 'beta' }}
         run: |
           cd ${{ inputs.ANDROID_SERVICE_LOCATION }}
-          cd ${{ inputs.BUILD_SCRIPT }}
+          cd ${{ inputs.BUILD_SCRIPT_LOCATION }}
           ./git-tag.sh
 
       - name: Install npm dependencies
@@ -115,11 +115,11 @@ jobs:
           INJI_ANDROID_PLAY_STORE_CONFIG_JSON: ${{ secrets.INJI_ANDROID_PLAY_STORE_CONFIG_JSON }}
 
       - name: Create build and upload to play console
-        if: ${{ inputs.BETA_RELEASE != 'true' }}
+        if: ${{ inputs.RELEASE != 'beta' }}
         run: |
           cd ${{ inputs.ANDROID_SERVICE_LOCATION }}
-          cd ${{ inputs.BUILD_SCRIPT }}
-          ./internal-build.sh
+          cd ${{ inputs.BUILD_SCRIPT_LOCATION }}
+          ./${{ inputs.RELEASE }}.sh
         env:
           MIMOTO_HOST: ${{ inputs.MIMOTO_HOST }}
           ESIGNET_HOST: ${{ inputs.ESIGNET_HOST }}
@@ -131,11 +131,11 @@ jobs:
           BUILD_DESCRIPTION: ${{ inputs.BUILD_DESCRIPTION }}
 
       - name: Create Beta build and upload to play console
-        if: ${{ inputs.BETA_RELEASE == 'true' }}
+        if: ${{ inputs.RELEASE == 'beta' }}
         run: |
           cd ${{ inputs.ANDROID_SERVICE_LOCATION }}
-          cd ${{ inputs.BUILD_SCRIPT }}
-          ./beta-build.sh
+          cd ${{ inputs.BUILD_SCRIPT_LOCATION }}
+          ./${{ inputs.RELEASE }}.sh
         env:
           MIMOTO_HOST: ${{ inputs.MIMOTO_HOST }}
           ESIGNET_HOST: ${{ inputs.ESIGNET_HOST }}

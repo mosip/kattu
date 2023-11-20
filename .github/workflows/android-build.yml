@@ -2,7 +2,7 @@ name: Android Build
 
 env:
   DUMMY_DEBUG_KEYSTORE_PASSWORD: 'password'
-  
+
 on:
   workflow_call:
     inputs:
@@ -11,6 +11,16 @@ on:
         type: string
       DEBUG_KEYSTORE_ALIAS:
         default: androiddebugkey
+        type: string
+      SERVICE_LOCATION:
+        description: "Service Location"
+        required: true
+        default: "."
+        type: string
+      ANDROID_SERVICE_LOCATION:
+        description: "Android Service Location"
+        required: true
+        default: "android"
         type: string
     secrets:
       DEBUG_KEYSTORE_PASSWORD:
@@ -26,7 +36,9 @@ jobs:
           node-version: ${{ inputs.NODE_VERSION }}
 
       - name: Install npm dependencies
-        run: npm ci
+        run: |
+          cd ${{ inputs.SERVICE_LOCATION }}
+          npm ci
 
       - name: Create .env.local file
         run: |
@@ -52,7 +64,7 @@ jobs:
 
       - name: Create Build
         run: |
-          cd android/scripts
+          cd ${{ inputs.ANDROID_SERVICE_LOCATION }}/scripts
           ./android-build.sh
         env:
           DEBUG_KEYSTORE_ALIAS: ${{ inputs.DEBUG_KEYSTORE_ALIAS }}

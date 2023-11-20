@@ -6,6 +6,16 @@ on:
       NODE_VERSION:
         default: "18.x"
         type: string
+      SERVICE_LOCATION:
+        description: "Service Location"
+        required: true
+        default: "."
+        type: string
+      IOS_SERVICE_LOCATION:
+        description: "IOS Service Location"
+        required: true
+        default: "ios"
+        type: string
 
 jobs:
   build_ios:
@@ -20,15 +30,16 @@ jobs:
 
       - name: Install npm dependencies
         run: |
+          cd ${{ inputs.SERVICE_LOCATION }}
           npm install
 
       - name: Install Pod
         run: |
-          cd ios
+          cd ${{ inputs.IOS_SERVICE_LOCATION }}
           pod install
           pod install
 
       - name: Build iOS
         run: |
-          cd ios
+          cd ${{ inputs.IOS_SERVICE_LOCATION }}
           fastlane ios_app_build

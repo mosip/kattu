@@ -56,6 +56,11 @@ on:
         required: true
         default: "android"
         type: string
+      BUILD_SCRIPT:
+        description: "Android build script Location"
+        required: true
+        default: "scripts"
+        type: string
     secrets:
       ANDROID_KEYSTORE_FILE:
         required: true
@@ -81,6 +86,7 @@ jobs:
         if: ${{ inputs.BETA_RELEASE == 'Yes' }}
         run: |
           cd ${{ inputs.ANDROID_SERVICE_LOCATION }}
+          cd ${{ inputs.BUILD_SCRIPT }}
           ./git-tag.sh
 
       - name: Install npm dependencies
@@ -112,6 +118,7 @@ jobs:
         if: ${{ inputs.BETA_RELEASE != 'true' }}
         run: |
           cd ${{ inputs.ANDROID_SERVICE_LOCATION }}
+          cd ${{ inputs.BUILD_SCRIPT }}
           ./internal-build.sh
         env:
           MIMOTO_HOST: ${{ inputs.MIMOTO_HOST }}
@@ -127,6 +134,7 @@ jobs:
         if: ${{ inputs.BETA_RELEASE == 'true' }}
         run: |
           cd ${{ inputs.ANDROID_SERVICE_LOCATION }}
+          cd ${{ inputs.BUILD_SCRIPT }}
           ./beta-build.sh
         env:
           MIMOTO_HOST: ${{ inputs.MIMOTO_HOST }}

@@ -22,6 +22,11 @@ on:
         required: true
         default: "android"
         type: string
+      BUILD_SCRIPT:
+        description: "Android build script Location"
+        required: true
+        default: "scripts"
+        type: string
     secrets:
       DEBUG_KEYSTORE_PASSWORD:
         required: true
@@ -65,6 +70,7 @@ jobs:
       - name: Create Build
         run: |
           cd ${{ inputs.ANDROID_SERVICE_LOCATION }}
+          cd ${{ inputs.BUILD_SCRIPT }}
           ./android-build.sh
         env:
           DEBUG_KEYSTORE_ALIAS: ${{ inputs.DEBUG_KEYSTORE_ALIAS }}

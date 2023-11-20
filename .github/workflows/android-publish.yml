@@ -61,6 +61,11 @@ on:
         required: true
         default: "scripts"
         type: string
+      BUILD_SCRIPT_NAME: 
+        description: "Build script name"
+        required: true
+        default: "build-android"
+        type: string
     secrets:
       ANDROID_KEYSTORE_FILE:
         required: true
@@ -119,7 +124,7 @@ jobs:
         run: |
           cd ${{ inputs.ANDROID_SERVICE_LOCATION }}
           cd ${{ inputs.BUILD_SCRIPT_LOCATION }}
-          ./${{ inputs.RELEASE }}.sh
+          ./${{ inputs.BUILD_SCRIPT_NAME }}.sh
         env:
           MIMOTO_HOST: ${{ inputs.MIMOTO_HOST }}
           ESIGNET_HOST: ${{ inputs.ESIGNET_HOST }}
@@ -135,7 +140,7 @@ jobs:
         run: |
           cd ${{ inputs.ANDROID_SERVICE_LOCATION }}
           cd ${{ inputs.BUILD_SCRIPT_LOCATION }}
-          ./${{ inputs.RELEASE }}.sh
+          ./${{ inputs.BUILD_SCRIPT_NAME }}.sh
         env:
           MIMOTO_HOST: ${{ inputs.MIMOTO_HOST }}
           ESIGNET_HOST: ${{ inputs.ESIGNET_HOST }}

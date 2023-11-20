@@ -30,7 +30,7 @@ on:
       BUILD_SCRIPT_NAME: 
         description: "Build script name"
         required: true
-        default: "android-build"
+        default: "build-android"
         type: string
     secrets:
       DEBUG_KEYSTORE_PASSWORD:

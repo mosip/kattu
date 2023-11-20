@@ -27,10 +27,10 @@ on:
         required: true
         default: "scripts"
         type: string
-      BUILD_SCRIPT_NAME: 
+      SCRIPT_NAME: 
         description: "Build script name"
         required: true
-        default: "build-android"
+        default: "./android-build.sh"
         type: string
     secrets:
       DEBUG_KEYSTORE_PASSWORD:
@@ -76,7 +76,7 @@ jobs:
         run: |
           cd ${{ inputs.ANDROID_SERVICE_LOCATION }}
           cd ${{ inputs.BUILD_SCRIPT_LOCATION }}
-          ./${{ inputs.BUILD_SCRIPT_NAME }}.sh
+          ${{ inputs.SCRIPT_NAME }}
         env:
           DEBUG_KEYSTORE_ALIAS: ${{ inputs.DEBUG_KEYSTORE_ALIAS }}
           DEBUG_KEYSTORE_PASSWORD: ${{ secrets.DEBUG_KEYSTORE_PASSWORD || env.DUMMY_DEBUG_KEYSTORE_PASSWORD }}

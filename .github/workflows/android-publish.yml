@@ -61,10 +61,10 @@ on:
         required: true
         default: "scripts"
         type: string
-      BUILD_SCRIPT_NAME: 
+      SCRIPT_NAME: 
         description: "Build script name"
         required: true
-        default: "build-android"
+        default: "./android-build.sh"
         type: string
     secrets:
       ANDROID_KEYSTORE_FILE:
@@ -124,7 +124,7 @@ jobs:
         run: |
           cd ${{ inputs.ANDROID_SERVICE_LOCATION }}
           cd ${{ inputs.BUILD_SCRIPT_LOCATION }}
-          ./${{ inputs.BUILD_SCRIPT_NAME }}.sh
+          ${{ inputs.SCRIPT_NAME }}
         env:
           MIMOTO_HOST: ${{ inputs.MIMOTO_HOST }}
           ESIGNET_HOST: ${{ inputs.ESIGNET_HOST }}
@@ -140,7 +140,7 @@ jobs:
         run: |
           cd ${{ inputs.ANDROID_SERVICE_LOCATION }}
           cd ${{ inputs.BUILD_SCRIPT_LOCATION }}
-          ./${{ inputs.BUILD_SCRIPT_NAME }}.sh
+          ${{ inputs.SCRIPT_NAME }}
         env:
           MIMOTO_HOST: ${{ inputs.MIMOTO_HOST }}
           ESIGNET_HOST: ${{ inputs.ESIGNET_HOST }}
@@ -163,7 +163,7 @@ jobs:
           RELEASE_KEYSTORE_ALIAS: ${{ inputs.RELEASE_KEYSTORE_ALIAS }}
           RELEASE_KEYSTORE_PASSWORD: "${{secrets.RELEASE_KEYSTORE_PASSWORD}}"
           CREDENTIAL_REGISTRY_EDIT: ${{ inputs.ALLOW_ENV_EDIT }}
-
+          
       - name: Upload Artifact to Actions
         uses: actions/upload-artifact@v3.1.1
         with:

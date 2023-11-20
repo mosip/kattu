@@ -80,7 +80,7 @@ jobs:
       - name: Check for git tag
         if: ${{ inputs.BETA_RELEASE == 'Yes' }}
         run: |
-          cd ${{ inputs.ANDROID_SERVICE_LOCATION }}/scripts
+          cd ${{ inputs.ANDROID_SERVICE_LOCATION }}
           ./git-tag.sh
 
       - name: Install npm dependencies
@@ -111,7 +111,7 @@ jobs:
       - name: Create build and upload to play console
         if: ${{ inputs.BETA_RELEASE != 'true' }}
         run: |
-          cd ${{ inputs.ANDROID_SERVICE_LOCATION }}/scripts
+          cd ${{ inputs.ANDROID_SERVICE_LOCATION }}
           ./internal-build.sh
         env:
           MIMOTO_HOST: ${{ inputs.MIMOTO_HOST }}
@@ -126,7 +126,7 @@ jobs:
       - name: Create Beta build and upload to play console
         if: ${{ inputs.BETA_RELEASE == 'true' }}
         run: |
-          cd ${{ inputs.ANDROID_SERVICE_LOCATION }}/scripts
+          cd ${{ inputs.ANDROID_SERVICE_LOCATION }}
           ./beta-build.sh
         env:
           MIMOTO_HOST: ${{ inputs.MIMOTO_HOST }}

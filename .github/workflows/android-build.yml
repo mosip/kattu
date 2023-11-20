@@ -64,7 +64,7 @@ jobs:
 
       - name: Create Build
         run: |
-          cd ${{ inputs.ANDROID_SERVICE_LOCATION }}/scripts
+          cd ${{ inputs.ANDROID_SERVICE_LOCATION }}
           ./android-build.sh
         env:
           DEBUG_KEYSTORE_ALIAS: ${{ inputs.DEBUG_KEYSTORE_ALIAS }}

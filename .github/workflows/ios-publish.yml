@@ -43,6 +43,11 @@ on:
         required: true
         default: "ios"
         type: string
+      SCRIPT_NAME: 
+        description: "Build script name"
+        required: true
+        default: "fastlane ios_app_build"
+        type: string
     secrets:
       APP_STORE_CONNECT_TEAM_ID:
         required: true
@@ -100,7 +105,7 @@ jobs:
       - name: Deploy iOS Beta to TestFlight
         run: |
           cd ${{ inputs.IOS_SERVICE_LOCATION }}
-          fastlane beta
+          ${{ inputs.SCRIPT_NAME }}
         env:
           APP_STORE_CONNECT_TEAM_ID: "${{ secrets.APP_STORE_CONNECT_TEAM_ID }}"
           DEVELOPER_APP_ID: "${{ secrets.DEVELOPER_APP_ID }}"
@@ -123,11 +128,6 @@ jobs:
           CREDENTIAL_REGISTRY_EDIT: ${{ inputs.ALLOW_ENV_EDIT }}
           TESTFLIGHT_INTERNAL_TESTERS_GROUP: ${{ inputs.TESTFLIGHT_INTERNAL_TESTERS_GROUP }}
           TESTFLIGHT_BETA_APP_DESCRIPTION: ${{ inputs.TESTFLIGHT_BETA_APP_DESCRIPTION }}
-
-      - name: Build iOS for automation on simulator
-        run: |
-          cd ${{ inputs.IOS_SERVICE_LOCATION }}
-          fastlane ios_app_build
 
       - name: Upload artifact
         uses: actions/upload-artifact@v3.1.1

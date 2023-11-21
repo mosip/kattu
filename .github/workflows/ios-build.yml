@@ -16,6 +16,11 @@ on:
         required: true
         default: "ios"
         type: string
+      SCRIPT_NAME: 
+        description: "Build script name"
+        required: true
+        default: "fastlane ios_app_build"
+        type: string
 
 jobs:
   build_ios:
@@ -42,4 +47,4 @@ jobs:
       - name: Build iOS
         run: |
           cd ${{ inputs.IOS_SERVICE_LOCATION }}
-          fastlane ios_app_build
+          ${{ inputs.SCRIPT_NAME }}

@@ -36,10 +36,10 @@ on:
         description: "Edit ENV"
         required: true
         type: string
-      BUILD_NAME:
-        description: "Build App For"
+      ANDROID_ARTIFACT_NAME:
+        description: "Android Artifact name"
         required: true
-        default: "Sprint-x/Collab/release-x.x.x"
+        default: "Android App"
         type: string
       INJI_FLAVOR:
         description: 'Select Inji flavor'
@@ -66,6 +66,11 @@ on:
         required: true
         default: "./android-build.sh"
         type: string
+      ANDROID_ARTIFACT_PATH:
+        description: "Android Artifact path"
+        required: true
+        default: "android/app/build/outputs"
+        type: string
     secrets:
       ANDROID_KEYSTORE_FILE:
         required: true
@@ -90,7 +95,7 @@ jobs:
       - name: Check for git tag
         if: ${{ inputs.RELEASE == 'beta' }}
         run: |
-          cd ${{ inputs.ANDROID_SERVICE_LOCATION }}
+          cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}
           cd ${{ inputs.BUILD_SCRIPT_LOCATION }}
           ./git-tag.sh
 
@@ -113,7 +118,7 @@ jobs:
 
       - name: Create Google Play Config file
         run: |
-          cd ${{ inputs.ANDROID_SERVICE_LOCATION }}
+          cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}
           echo "$INJI_ANDROID_PLAY_STORE_CONFIG_JSON" > play_config.json.b64
           base64 -d -i play_config.json.b64 > play_config.json
         env:
@@ -122,7 +127,7 @@ jobs:
       - name: Create build and upload to play console
         if: ${{ inputs.RELEASE != 'beta' }}
         run: |
-          cd ${{ inputs.ANDROID_SERVICE_LOCATION }}
+          cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}
           cd ${{ inputs.BUILD_SCRIPT_LOCATION }}
           ${{ inputs.SCRIPT_NAME }}
         env:
@@ -138,7 +143,7 @@ jobs:
       - name: Create Beta build and upload to play console
         if: ${{ inputs.RELEASE == 'beta' }}
         run: |
-          cd ${{ inputs.ANDROID_SERVICE_LOCATION }}
+          cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}
           cd ${{ inputs.BUILD_SCRIPT_LOCATION }}
           ${{ inputs.SCRIPT_NAME }}
         env:
@@ -154,7 +159,7 @@ jobs:
       - name: Create Build
         run: |
           npx jetify
-          cd ${{ inputs.ANDROID_SERVICE_LOCATION }}
+          cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}
           npm run android:${{ inputs.INJI_FLAVOR }}
         env:
           MIMOTO_HOST: ${{ inputs.MIMOTO_HOST }}
@@ -167,8 +172,8 @@ jobs:
       - name: Upload Artifact to Actions
         uses: actions/upload-artifact@v3.1.1
         with:
-          name: ${{ inputs.BUILD_NAME }}
-          path: android/app/build/outputs/apk/mosip/release/Inji_universal.apk
+          name: ${{ inputs.ANDROID_ARTIFACT_NAME }}
+          path: ${{ inputs.ANDROID_ARTIFACT_PATH }}
           retention-days: 10
 
       - uses: 8398a7/action-slack@v3

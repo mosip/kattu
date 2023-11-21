@@ -48,6 +48,16 @@ on:
         required: true
         default: "fastlane ios_app_build"
         type: string
+      IOS_ARTIFACT_NAME:
+        description: "IOS Artifact name"
+        required: true
+        default: "IOS App"
+        type: string
+      IOS_ARTIFACT_PATH:
+        description: "IOS Artifact path"
+        required: true
+        default: "ios/build"
+        type: string
     secrets:
       APP_STORE_CONNECT_TEAM_ID:
         required: true
@@ -98,13 +108,13 @@ jobs:
 
       - name: Install Pod
         run: |
-          cd ${{ inputs.IOS_SERVICE_LOCATION }}
+          cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.IOS_SERVICE_LOCATION }}
           pod install
           pod install
 
       - name: Deploy iOS Beta to TestFlight
         run: |
-          cd ${{ inputs.IOS_SERVICE_LOCATION }}
+          cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.IOS_SERVICE_LOCATION }}
           ${{ inputs.SCRIPT_NAME }}
         env:
           APP_STORE_CONNECT_TEAM_ID: "${{ secrets.APP_STORE_CONNECT_TEAM_ID }}"
@@ -132,8 +142,8 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v3.1.1
         with:
-          name: Inji
-          path: ios/fastlane/Inji_app_file/Products/Applications/
+          name: ${{ inputs.IOS_ARTIFACT_NAME }}
+          path: ${{ inputs.IOS_ARTIFACT_PATH }}
           retention-days: 10
 
       - name: Upload Runner Log on Failure

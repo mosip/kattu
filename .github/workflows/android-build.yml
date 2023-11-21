@@ -74,7 +74,7 @@ jobs:
 
       - name: Create Build
         run: |
-          cd ${{ inputs.ANDROID_SERVICE_LOCATION }}
+          cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}
           cd ${{ inputs.BUILD_SCRIPT_LOCATION }}
           ${{ inputs.SCRIPT_NAME }}
         env:

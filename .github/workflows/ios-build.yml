@@ -40,11 +40,11 @@ jobs:
 
       - name: Install Pod
         run: |
-          cd ${{ inputs.IOS_SERVICE_LOCATION }}
+          cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.IOS_SERVICE_LOCATION }}
           pod install
           pod install
 
       - name: Build iOS
         run: |
-          cd ${{ inputs.IOS_SERVICE_LOCATION }}
+          cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.IOS_SERVICE_LOCATION }}
           ${{ inputs.SCRIPT_NAME }}

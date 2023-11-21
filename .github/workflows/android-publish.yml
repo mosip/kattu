@@ -41,10 +41,10 @@ on:
         required: true
         default: "Android App"
         type: string
-      INJI_FLAVOR:
-        description: 'Select Inji flavor'
+      APP_FLAVOR:
+        description: 'Select App flavor'
         required: true
-        default: 'Inji'
+        default: 'App'
         type: string
       SERVICE_LOCATION:
         description: "Service Location"
@@ -139,6 +139,7 @@ jobs:
           CREDENTIAL_REGISTRY_EDIT: ${{ inputs.ALLOW_ENV_EDIT }}
           SLACK_WEBHOOK_URL: "${{ secrets.SLACK_WEBHOOK_URL }}"
           BUILD_DESCRIPTION: ${{ inputs.BUILD_DESCRIPTION }}
+          APP_FLAVOR: ${{ inputs.APP_FLAVOR }}
 
       - name: Create Beta build and upload to play console
         if: ${{ inputs.RELEASE == 'beta' }}
@@ -155,12 +156,13 @@ jobs:
           CREDENTIAL_REGISTRY_EDIT: ${{ inputs.ALLOW_ENV_EDIT }}
           SLACK_WEBHOOK_URL: "${{ secrets.SLACK_WEBHOOK_URL }}"
           BUILD_DESCRIPTION: ${{ inputs.BUILD_DESCRIPTION }}
+          APP_FLAVOR: ${{ inputs.APP_FLAVOR }}
 
       - name: Create Build
         run: |
           npx jetify
           cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}
-          npm run android:${{ inputs.INJI_FLAVOR }}
+          npm run android:${{ inputs.APP_FLAVOR }}
         env:
           MIMOTO_HOST: ${{ inputs.MIMOTO_HOST }}
           ESIGNET_HOST: ${{ inputs.ESIGNET_HOST }}

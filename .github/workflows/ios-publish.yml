@@ -130,7 +130,7 @@ jobs:
           APPLE_KEY_ID: "${{ secrets.APPLE_KEY_ID }}"
           APPLE_ISSUER_ID: "${{ secrets.APPLE_ISSUER_ID }}"
           APPLE_KEY_CONTENT: "${{ secrets.APPLE_KEY_CONTENT }}"
-          SLACK_WEBHOOK_URL: "${{ secrets.SLACK_WEBHOOK_DEVOPS }}"
+          SLACK_WEBHOOK_URL: "${{ secrets.SLACK_WEBHOOK_URL }}"
           MATCH_PASSWORD: "${{ secrets.MATCH_PASSWORD }}"
           MIMOTO_HOST: ${{ inputs.MIMOTO_HOST }}
           ESIGNET_HOST: ${{ inputs.ESIGNET_HOST }}

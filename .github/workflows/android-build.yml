@@ -50,9 +50,8 @@ jobs:
           cd ${{ inputs.SERVICE_LOCATION }}
           npm ci
 
-      - name: Create .env.local file
+      - name: Echo branch name
         run: |
-          echo "${{ secrets.ENV_FILE }}" > android/local.properties
           echo "BRANCH_NAME=$(echo ${{ github.ref }} | sed -e 's,.*/\(.*\),\1,')" >> $GITHUB_ENV
 
       - name: Generate keystore for build

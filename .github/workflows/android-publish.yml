@@ -159,7 +159,7 @@ jobs:
         run: |
           npx jetify
           cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}
-          npm run android:${{ inputs.APP_FLAVOR }}
+          ./gradlew :app:assemble${{ inputs.APP_FLAVOR }}Release
         env:
           MIMOTO_HOST: ${{ inputs.MIMOTO_HOST }}
           ESIGNET_HOST: ${{ inputs.ESIGNET_HOST }}

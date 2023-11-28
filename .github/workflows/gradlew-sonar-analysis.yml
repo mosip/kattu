@@ -78,7 +78,7 @@ jobs:
           cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_LOCATION }}
           sed -i -e 's/\r$//' ./gradlew
           chmod +x ./gradlew
-          ./gradlew build sonarqube -Dsonar.organization=${{ env.SONAR_ORGANIZATION }} -Dsonar.projectKey=${{ inputs.PROJECT_KEY }} -Dsonar.projectName=${{ inputs.PROJECT_NAME }} -Dsonar.host.url=${{ inputs.SONAR_URL }} --info --warning-mode all ${{ inputs.SONAR_ARGS }}
+          ./gradlew :app:assemble${{ inputs.APP_FLAVOR }}Debug sonarqube -Dsonar.organization=${{ env.SONAR_ORGANIZATION }} -Dsonar.projectKey=${{ inputs.PROJECT_KEY }} -Dsonar.projectName=${{ inputs.PROJECT_NAME }} -Dsonar.host.url=${{ inputs.SONAR_URL }} --info --warning-mode all ${{ inputs.SONAR_ARGS }}
 
       - uses: 8398a7/action-slack@v3
         with:

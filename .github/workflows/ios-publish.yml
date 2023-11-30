@@ -106,11 +106,11 @@ jobs:
           cd ${{ inputs.SERVICE_LOCATION }}
           npm install
 
-      - name: Install Pod
+      - name: Install Pod # Doing pod install twice to make sure dependency is downloaded properly
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.IOS_SERVICE_LOCATION }}
           pod install
-          pod install
+          pod install 
 
       - name: Deploy iOS Beta to TestFlight
         run: |

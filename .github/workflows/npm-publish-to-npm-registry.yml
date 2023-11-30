@@ -54,7 +54,7 @@ jobs:
         run: cd ${{ inputs.SERVICE_LOCATION }} && npm run verify
 
       - name: Publish package
-        run: cd ${{ inputs.SERVICE_LOCATION }} && npm publish
+        run: cd ${{ inputs.SERVICE_LOCATION }} && npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_AUTH_TOKEN }}
 

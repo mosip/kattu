@@ -48,6 +48,11 @@ on:
         required: true
         default: "fastlane ios_app_build"
         type: string
+      APP_FLAVOR:
+        description: 'Select App flavor'
+        required: true
+        default: 'App'
+        type: string
       IOS_ARTIFACT_NAME:
         description: "IOS Artifact name"
         required: true
@@ -132,6 +137,7 @@ jobs:
           APPLE_KEY_CONTENT: "${{ secrets.APPLE_KEY_CONTENT }}"
           SLACK_WEBHOOK_URL: "${{ secrets.SLACK_WEBHOOK_URL }}"
           MATCH_PASSWORD: "${{ secrets.MATCH_PASSWORD }}"
+          APP_FLAVOR: ${{ inputs.APP_FLAVOR }}
           MIMOTO_HOST: ${{ inputs.MIMOTO_HOST }}
           ESIGNET_HOST: ${{ inputs.ESIGNET_HOST }}
           APPLICATION_THEME: ${{ inputs.APPLICATION_THEME }}

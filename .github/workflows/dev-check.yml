@@ -1,3 +1,5 @@
+# .github/workflows/dependency-check.yml
+
 name: Dependency Check
 
 on:
@@ -58,9 +60,9 @@ jobs:
             if [[ " ${skipped_dependencies[@]} " =~ " $version " ]]; then
               echo "Skipping VERSION $version based on user input (SKIP_DEPENDENCIES)"
             else
-              output=$(mvn help:evaluate -Dexpression="$version" -f $pomfile | grep -vE "INFO|WARNING")
+              output=$(grep -oPm1 "(?<=<${version}>)[^<]+" "$pomfile" || echo "ERROR")
           
-              if [[ $output == *"ERROR"* ]]; then
+              if [[ $output == "ERROR" ]]; then
                 echo "VERSION $version not found; EXITING"
                 exit 1
               elif [[ $output != *"-SNAPSHOT"* ]]; then
@@ -80,10 +82,8 @@ jobs:
           
           for pomfile in $pomfiles; do
             echo "===================================== $pomfile =========================================="
-            # Use xmlstarlet to extract dependency versions
-            dv=$(xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:dependencies/s:dependency/s:version" $pomfile | grep '[${}]' | sed 's/[${}]//g')
-            echo "Dependency versions in $pomfile = $dv" | sed -z 's/\n//'
-            for v in $dv; do
+            # Use grep to extract dependency versions
+            for v in "${dependency_versions[@]}"; do
               echo -e "\nv=$v"
               resolve_version "$v" "$pomfile"
             done

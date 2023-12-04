@@ -6,15 +6,22 @@ on:
       MESSAGE:
         description: 'Triggered For Dependency Check'
         required: false
+        type: string
         default: 'dependency check'
       SKIP_DEPENDENCIES:
         description: 'List of dependencies to be skipped'
         required: false
+        type: string
         default: ''
       DEPENDENCY_VERSIONS:
         description: 'Specify versions for specific dependencies'
         required: false
+        type: string
         default: ''
+
+    secrets:
+      SLACK_WEBHOOK_URL:
+        required: true        
 
 jobs:
   check-dependencies:

@@ -18,6 +18,9 @@ on:
     secrets:
       SLACK_WEBHOOK_URL:
         required: true
+      TOKEN:
+        required: true
+        
 
 jobs:
   check-dependencies:

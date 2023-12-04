@@ -1,3 +1,5 @@
+# .github/workflows/dependency-check.yml
+
 name: Dependency Check
 
 on:
@@ -20,7 +22,6 @@ on:
         required: true
       TOKEN:
         required: true
-        
 
 jobs:
   check-dependencies:

@@ -1,7 +1,7 @@
 name: Dependency Check
 
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
       MESSAGE:
         description: 'Triggered For Dependency Check'

@@ -40,7 +40,7 @@ jobs:
           # Find all pom.xml files
           pomfiles=$(find ./ -type f -name "*pom.xml")
           
-          skipped_dependencies=($SKIP_DEPENDENCIES)
+          skipped_dependencies=${{ inputs.SKIP_DEPENDENCIES }}
           IFS=' ' read -ra dependency_versions <<< "$DEPENDENCY_VERSIONS"
           
           # Function to resolve a version and check if it's marked outside the current development version

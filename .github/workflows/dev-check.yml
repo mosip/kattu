@@ -52,31 +52,31 @@ jobs:
           
           # Function to resolve a version and check if it's marked outside the current development version
           resolve_version() {
-            local version=$1
-            local pomfile=$2
+          local version=$1
+          local pomfile=$2
 
-            if [[ " ${skipped_dependencies[@]} " =~ " $version " ]]; then
-              echo "Skipping VERSION $version based on user input (SKIP_DEPENDENCIES)"
-            else
-              output=$(mvn help:evaluate -Dexpression=$version -f $pomfile | grep -vE "INFO|WARNING")
-          
-              if [[ $output == *"ERROR"* ]]; then
-                echo "VERSION $version not found; EXITING"
-                exit 1
-              elif [[ $output != *"-SNAPSHOT"* ]]; then
-                if [[ ${dependency_versions["$version"]} ]]; then
-                  expected_version="${dependency_versions["$version"]}"
-                  if [[ "$output" != *"$expected_version"* ]]; then
-                    echo "Mismatch for VERSION $version; Expected: $expected_version, Actual: $output; EXITING"
-                    exit 1
-                  fi
-                else
-                  echo "VERSION '$version' is marked outside the current development version; EXITING"
-                  exit 1
-                fi
-              fi
-            fi
-          }
+         if [[ " ${skipped_dependencies[@]} " =~ " $version " ]]; then
+          echo "Skipping VERSION $version based on user input (SKIP_DEPENDENCIES)"
+         else
+          output=$(mvn help:evaluate -Dexpression="$version" -f $pomfile | grep -vE "INFO|WARNING")
+  
+         if [[ $output == *"ERROR"* ]]; then
+           echo "VERSION $version not found; EXITING"
+           exit 1
+          elif [[ $output != *"-SNAPSHOT"* ]]; then
+         if [[ ${dependency_versions["$version"]} ]]; then
+           expected_version="${dependency_versions["$version"]}"
+         if [[ "$output" != *"$expected_version"* ]]; then
+            echo "Mismatch for VERSION $version; Expected: $expected_version, Actual: $output; EXITING"
+           exit 1
+         fi
+         else
+           echo "VERSION '$version' is marked outside the current development version; EXITING"
+           exit 1
+         fi
+         fi
+         fi
+         }
           
           for pomfile in $pomfiles; do
             echo "===================================== $pomfile =========================================="

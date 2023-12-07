@@ -120,6 +120,7 @@ jobs:
           delete-branch: true
           base: ${{ github.event.inputs.BASE }}
           token: ${{ secrets.ACTION_PAT }}
+          signoff: true
 
       - uses: 8398a7/action-slack@v3
         with:

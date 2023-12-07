@@ -55,7 +55,12 @@ jobs:
           sed -i 's/OSSRH_SNAPSHOT_URL/RELEASE_URL/g' push-trigger.yml
 
       - name: Updating libs-snapshot-local to libs-release local for artifactory URL's.
-        run: find . -type f -name "*Dockerfile" -print0 | xargs -0 sed -i "s/libs-snapshot-local/libs-release-local/g"
+        run: |
+          if find . -type f -name "*Dockerfile" -print -quit | grep -q .; then
+            find . -type f -name "*Dockerfile" -print0 | xargs -0 sed -i "s/libs-snapshot-local/libs-release-local/g"
+          else
+            echo "No Dockerfiles found."
+          fi
 
       - name: removing -DskipTests
         run: sed -i "s/<skip>true<\/skip>/<skip>false<\/skip>/"       $( find ./ -type f -name "*pom.xml" )

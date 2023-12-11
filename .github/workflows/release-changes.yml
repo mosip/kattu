@@ -3,10 +3,12 @@ name: Release/pre-release Preparation.
 on:
   workflow_call:
     inputs:
-      MESSAGE:
-        description: 'Triggered for release or pe-release'
-        required: false
-        default: 'Release Preparation'
+      REPO_URL:
+        description: '<github-account-name>/<repo-name>'
+        required: true
+        type: string
+      REPO_BRANCH:
+        required: true
         type: string
       RELEASE_TAG:
         description: 'tag to update'
@@ -31,6 +33,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+        with:
+          repository: ${{ inputs.REPO_URL }}
+          ref: ${{ inputs.REPO_BRANCH }}
       - name: Setup branch and env
         run: |
           # Strip git ref prefix from version

@@ -3,9 +3,9 @@ on:
   workflow_call:
     secrets:
       ACCESS_TOKEN:
-        required: true
+        required: false
       SLACK_WEBHOOK_URL:
-        required: true
+        required: false
 
 jobs:
   delete-artifacts:
@@ -13,12 +13,12 @@ jobs:
     steps:
       - uses: kolpav/purge-artifacts-action@v1
         with:
-          token: ${{ secrets.ACCESS_TOKEN }}
+          token: ${{ secrets.ACTION_PAT }}
           expire-in: 2days # Setting this to 0 will delete all artifacts
       - uses: 8398a7/action-slack@v3
         with:
           status: ${{ job.status }}
           fields: repo,message,author,commit,workflow,job # selectable (default: repo,message)
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} # required
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_DEVOPS }} # required
         if: failure() # Pick up events even if the job fails or is canceled.

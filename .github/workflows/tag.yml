@@ -7,7 +7,7 @@ on:
         description: path of csv file
         required: false
         type: string
-        default: ./release/Repo_release/repolist.csv
+        default: ./release/gh_release/repos.csv
     secrets:
       SLACK_WEBHOOK_URL:
         required: true

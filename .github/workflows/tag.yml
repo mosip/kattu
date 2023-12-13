@@ -1,4 +1,4 @@
-name: Release from CSV
+name: Tagging/Release of repos
 
 on:
   workflow_call:

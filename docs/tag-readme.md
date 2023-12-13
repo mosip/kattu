@@ -9,6 +9,7 @@ The workflow can be triggered based on your specific release criteria.
 ## Inputs
 
 The workflow accepts the following inputs:
+- `REPO` (required, string): The name of the repository without the .git extension. The name is not case sensitive.
 - `TAG` (required): The tag that you want to create and publish.
 - `BODY` (optional, default: 'Changes in this Release'): A custom message for the release body, describing the changes in this release.
 - `PRE_RELEASE` (required, default: False): A boolean (True/False) indicating whether the release is a pre-release or not.
@@ -16,6 +17,7 @@ The workflow accepts the following inputs:
 - `ONLY_TAG` (optional, string, default: false): Set to true if you want to create only a tag without a full release.
 - `BRANCH` (required, string): The name of the branch from which the release will be created.
 - `LATEST` (optional, string, default: true): Set too false to prevent marking the release as the latest.
+- `MESSAGE` (required, string): The tag message.
 
 ## Secrets
 

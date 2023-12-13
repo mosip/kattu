@@ -18,6 +18,7 @@ The workflow accepts the following inputs:
 - `BRANCH` (required, string): The name of the branch from which the release will be created.
 - `LATEST` (optional, string, default: true): Set too false to prevent marking the release as the latest.
 - `MESSAGE` (required, string): The tag message.
+- `OBJECT_SHA` (required, string): The SHA of the git object this is tagging.
 
 ## Secrets
 

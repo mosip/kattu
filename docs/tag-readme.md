@@ -2,23 +2,21 @@
 
 ## Purpose
 
-This workflow automates the process of creating GitHub releases by applying `tags` to your repositories.
-It provides the flexibility to create both regular releases and pre-releases while allowing you to customize the release's body message.
+This workflow automates the process of creating GitHub releases by applying tags to your repositories through the GitHub API. It allows for the generation of both regular releases and pre-releases.It takes inputs dynamically from a CSV file.
 The workflow can be triggered based on your specific release criteria.
 
 ## Inputs
 
-The workflow accepts the following inputs:
+The workflow accepts the following inputs from CSV file :
 - `REPO` (required, string): The name of the repository without the .git extension. The name is not case sensitive.
 - `TAG` (required): The tag that you want to create and publish.
-- `BODY` (optional, default: 'Changes in this Release'): A custom message for the release body, describing the changes in this release.
-- `PRE_RELEASE` (required, default: False): A boolean (True/False) indicating whether the release is a pre-release or not.
-- `DRAFT` (optional, default: False): A boolean (True/False) indicating whether the release should be a draft.
 - `ONLY_TAG` (optional, string, default: false): Set to true if you want to create only a tag without a full release.
 - `BRANCH` (required, string): The name of the branch from which the release will be created.
 - `LATEST` (optional, string, default: true): Set too false to prevent marking the release as the latest.
+- `BODY` (optional, default: 'Changes in this Release'): A custom message for the release body, describing the changes in this release.
+- `PRE_RELEASE` (required, default: False): A boolean (True/False) indicating whether the release is a pre-release or not.
+- `DRAFT` (optional, default: False): A boolean (True/False) indicating whether the release should be a draft.
 - `MESSAGE` (required, string): The tag message.
-- `OBJECT_SHA` (required, string): The SHA of the git object this is tagging.
 
 ## Secrets
 
@@ -41,19 +39,6 @@ on:
         default: ''
         type: string
 jobs:
-  chk_token:
-    runs-on: ubuntu-latest
-    outputs:
-      TOKEN: ${{ steps.ORG_TOKEN.outputs.TOKEN }}
-    steps:
-      - name: Check if input TOKEN is empty
-        if: -n "${{  inputs.TOKEN == ''  }}"
-        id: ORG_TOKEN
-        run: |
-           echo "TOKEN=TOKEN" >> $GITHUB_OUTPUT
-      - name: Print Secret Name
-        run: |
-          echo "SECRET NAME : ${{ steps.ORG_TOKEN.outputs.TOKEN }}"
   workflow-tag:
     needs: chk_token
     uses: mosip/kattu/.github/workflows/tag.yaml@master

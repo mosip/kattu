@@ -46,6 +46,6 @@ jobs:
     with:
       CSV_FILE: ${{ inputs.CSV_FILE }}
     secrets:
-      TOKEN: "${{ secrets[needs.chk_token.outputs.TOKEN] || inputs.TOKEN }}"
-      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_MOSIP_WEBHOOK_URL }}
+      TOKEN: "${{ secrets.TOKEN }}"
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 ```

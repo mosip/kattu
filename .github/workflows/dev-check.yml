@@ -39,6 +39,14 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
+        with:
+          repository: ${{ inputs.REPO_URL }}
+          ref: ${{ inputs.REPO_BRANCH }}
+      - name: Setup branch and env
+        run: |
+          # Strip git ref prefix from version
+          echo "BRANCH_NAME=$(echo ${{ github.ref }} | sed -e 's,.*/\(.*\),\1,')" >> $GITHUB_ENV
+          echo "GPG_TTY=$(tty)" >> $GITHUB_ENV          
 
       - name: Set up JDK
         uses: actions/setup-java@v2

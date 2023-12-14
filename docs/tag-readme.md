@@ -7,17 +7,18 @@ The workflow can be triggered based on your specific release criteria.
 
 ## Inputs
 
-The workflow accepts the following inputs from CSV file :
-- `REPO` (required, string): The name of the repository without the .git extension. The name is not case sensitive.
-- `TAG` (required): The tag that you want to create and publish.
-- `ONLY_TAG` (optional, string, default: false): Set to true if you want to create only a tag without a full release.
-- `BRANCH` (required, string): The name of the branch from which the release will be created.
-- `LATEST` (optional, string, default: true): Set too false to prevent marking the release as the latest.
-- `BODY` (optional, default: 'Changes in this Release'): A custom message for the release body, describing the changes in this release.
-- `PRE_RELEASE` (required, default: False): A boolean (True/False) indicating whether the release is a pre-release or not.
-- `DRAFT` (optional, default: False): A boolean (True/False) indicating whether the release should be a draft.
-- `MESSAGE` (required, string): The tag message.
-
+The workflow accepts the following inputs:
+- `CSV_FILE` (required:false, string, default: ./release/gh_release/repos.csv): This input specifies the path to the CSV file. The content of the CSV file should adhere to the format: `REPO, TAG, ONLY_TAG, BRANCH, LATEST, BODY, PRE_RELEASE, DRAFT, MESSAGE`.
+    - `REPO` : The name of the repository without the .git extension. The name is not case sensitive.
+    - `TAG` : The tag that you want to create and publish.
+    - `ONLY_TAG` : Set to true if you want to create only a tag without a full release.
+    - `BRANCH` : The name of the branch from which the release will be created.
+    - `LATEST` : Set too false to prevent marking the release as the latest.
+    - `BODY` : A custom message for the release body, describing the changes in this release.
+    - `PRE_RELEASE` : A boolean (True/False) indicating whether the release is a pre-release or not.
+    - `DRAFT` : A boolean (True/False) indicating whether the release should be a draft.
+    - `MESSAGE` : The tag message.
+  
 ## Secrets
 
 This workflow requires the following secrets to be set in your GitHub repository:
@@ -33,15 +34,17 @@ name:  workflow for mosip github releases
 on:
   workflow_dispatch:
     inputs:
-      TOKEN:
-        description: 'provide docker hub token'
+      CSV_FILE:
+        description: path of csv file
         required: false
-        default: ''
         type: string
+        default: ./release/gh_release/repos.csv
 jobs:
   workflow-tag:
     needs: chk_token
     uses: mosip/kattu/.github/workflows/tag.yaml@master
+    with:
+      CSV_FILE: ${{ inputs.CSV_FILE }}
     secrets:
       TOKEN: "${{ secrets[needs.chk_token.outputs.TOKEN] || inputs.TOKEN }}"
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_MOSIP_WEBHOOK_URL }}

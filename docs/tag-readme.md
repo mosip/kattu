@@ -30,108 +30,34 @@ This workflow requires the following secrets to be set in your GitHub repository
 
 Here's an example of how you can use this workflow to create a release:
 ```yaml
-name: Tagging/Release of repos
+name:  workflow for mosip github releases
 
 on:
-  workflow_call:
+  workflow_dispatch:
     inputs:
-      CSV_FILE:
-        description: path of csv file
-        required: false
-        type: string
-        default: ./release/gh_release/repos.csv
-    secrets:
-      SLACK_WEBHOOK_URL:
-        required: true
       TOKEN:
-        required: true
-
+        description: 'provide docker hub token'
+        required: false
+        default: ''
+        type: string
 jobs:
-  create-releases-from-csv:
-    name: Create Releases from CSV
+  chk_token:
     runs-on: ubuntu-latest
+    outputs:
+      TOKEN: ${{ steps.ORG_TOKEN.outputs.TOKEN }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-      - name: Create Releases from CSV
+      - name: Check if input TOKEN is empty
+        if: -n "${{  inputs.TOKEN == ''  }}"
+        id: ORG_TOKEN
         run: |
-          while IFS=, read -r REPO TAG ONLY_TAG BRANCH LATEST BODY PRE_RELEASE DRAFT MESSAGE; do
-            if [[ "$REPO" == "REPO" ]]; then
-              echo "CSV header line ignoring";
-              continue;
-            fi
-
-            REPO=$(echo "$REPO" | tr -d '"')
-
-            echo "REPO === $REPO"
-
-            PRE_RELEASE=$(echo "$PRE_RELEASE" | tr '[:upper:]' '[:lower:]')
-            DRAFT=$(echo "$DRAFT" | tr '[:upper:]' '[:lower:]')
-            ONLY_TAG=$(echo "$ONLY_TAG" | tr '[:upper:]' '[:lower:]')
-
-            [[ "$PRE_RELEASE" == "true" ]] && PRE_RELEASE=true || PRE_RELEASE=false
-            [[ "$DRAFT" == "true" ]] && DRAFT=true || DRAFT=false
-            [[ "$ONLY_TAG" == "true" ]] && ONLY_TAG=true || ONLY_TAG=false
-
-            # Output key-value pairs
-            echo "REPO: $REPO"
-            echo "TAG: $TAG"
-            echo "ONLY_TAG: $ONLY_TAG"
-            echo "BRANCH: $BRANCH"
-            echo "LATEST: $LATEST"
-            echo "BODY: $BODY"
-            echo "PRE_RELEASE: $PRE_RELEASE"
-            echo "DRAFT: $DRAFT"
-            echo "MESSAGE: $MESSAGE"
-            echo "-----------------------------"
-
-            # Fetch the latest commit
-            REPO_URL="https://github.com/mosip/$REPO.git"
-            OBJECT_SHA=$(git ls-remote "$REPO_URL" "refs/heads/$BRANCH" | cut -f1)
-            echo "Latest commit on branch $BRANCH: $OBJECT_SHA"
-            
-            # Conditionally execute curl command based on ONLY_TAG value
-            if [[ "$ONLY_TAG" == "true" ]]; then
-              
-              # Create a tag
-              curl -X POST \
-                 -H "Authorization: token ${{ secrets.TOKEN }}" \
-                 -H "Accept: application/vnd.github.v3+json" \
-                 -H "X-GitHub-Api-Version: 2022-11-28" \
-                 https://api.github.com/repos/mosip/$REPO/git/refs \
-                 -d '{"ref": "refs/tags/'"$TAG"'", "sha": "'"$OBJECT_SHA"'"}'
-
-            else
-
-              # Construct data payload for release
-              data='{
-                "tag_name": "'"$TAG"'",
-                "name": "'"$TAG"'",
-                "target_commitish": "'"$BRANCH"'",
-                "body": "'"$BODY"'",
-                "draft": '$DRAFT',
-                "prerelease": '$PRE_RELEASE'
-              }'
-              
-              # Debugging output
-              echo "DEBUG: Data payload for release:"
-              echo "data: $data"
-
-              # Run curl command for release
-              curl -L \
-                -X POST \
-                -H "Accept: application/vnd.github+json" \
-                -H "Authorization: Bearer ${{ secrets.TOKEN }}" \
-                -H "X-GitHub-Api-Version: 2022-11-28" \
-                https://api.github.com/repos/mosip/$REPO/releases \
-                -d "$data"
-            fi
-          done < "${{ inputs.CSV_FILE }}"
-      - uses: 8398a7/action-slack@v3
-        with:
-          status: ${{ job.status }}
-          fields: repo,message,author,commit,workflow,job # selectable (default: repo,message)
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} # required
-        if: failure() # Pick up events even if the job fails or is canceled.
+           echo "TOKEN=TOKEN" >> $GITHUB_OUTPUT
+      - name: Print Secret Name
+        run: |
+          echo "SECRET NAME : ${{ steps.ORG_TOKEN.outputs.TOKEN }}"
+  workflow-tag:
+    needs: chk_token
+    uses: mosip/kattu/.github/workflows/tag.yaml@master
+    secrets:
+      TOKEN: "${{ secrets[needs.chk_token.outputs.TOKEN] || inputs.TOKEN }}"
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_MOSIP_WEBHOOK_URL }}
 ```

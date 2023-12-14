@@ -18,7 +18,6 @@ This workflow accepts the following inputs:
 
 This workflow requires the following secrets to be set in your GitHub repository:
 - `SLACK_WEBHOOK_URL` (required): The Slack webhook URL for sending notifications about the workflow's progress and outcome.
-- `ACTION_PAT` (required): A GitHub Personal Access Token (PAT) with the necessary permissions to create pull requests in your repository.
 
 ## Example Usage
 

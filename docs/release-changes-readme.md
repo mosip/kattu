@@ -11,7 +11,6 @@ The workflow can be customized to fit your release process, such as handling Mav
 This workflow accepts the following inputs:
 - `REPO_URL` (required): Name of the owner of the repository and repository name
 - `REPO_BRANCH` (required): The name of the branch for which release changes need to be made.
-- `MESSAGE` (optional, default: 'Release Preparation'): A custom message that describes the purpose of the workflow run. You can use this to differentiate between release and pre-release preparations.
 - `RELEASE_TAG` (required): The tag associated with the release you're preparing.
 - `SNAPSHOT_TAG` (required): The tag that needs to be replaced during the preparation.
 - `BASE` (required): The base branch for creating a pull request.

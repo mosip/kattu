@@ -5,6 +5,13 @@ name: Dependency Check
 on:
   workflow_call:
     inputs:
+      REPO_URL:
+        description: '<github-account-name>/<repo-name>'
+        required: true
+        type: string
+      REPO_BRANCH:
+        required: true
+        type: string
       MESSAGE:
         description: 'Triggered For Dependency Check'
         required: false

@@ -54,7 +54,7 @@ jobs:
             echo "-----------------------------"
 
             # Fetch the latest commit
-            REPO_URL="https://github.com/mosip/$REPO.git"
+            REPO_URL="https://github.com/shubham17998/$REPO.git"
             OBJECT_SHA=$(git ls-remote "$REPO_URL" "refs/heads/$BRANCH" | cut -f1)
             echo "Latest commit on branch $BRANCH: $OBJECT_SHA"
             

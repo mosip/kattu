@@ -13,7 +13,7 @@ The workflow accepts the following inputs:
     - `TAG` : The tag that you want to create and publish.
     - `ONLY_TAG` : Set to true if you want to create only a tag without a full release.
     - `BRANCH` : The name of the branch from which the release will be created.
-    - `LATEST` : Set too false to prevent marking the release as the latest.
+    - `LATEST` : Set to false to prevent marking the release as the latest.
     - `BODY` : A custom message for the release body, describing the changes in this release.
     - `PRE_RELEASE` : A boolean (True/False) indicating whether the release is a pre-release or not.
     - `DRAFT` : A boolean (True/False) indicating whether the release should be a draft.

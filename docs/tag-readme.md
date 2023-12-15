@@ -2,21 +2,23 @@
 
 ## Purpose
 
-This workflow automates the process of creating GitHub releases by applying `tags` to your repositories.
-It provides the flexibility to create both regular releases and pre-releases while allowing you to customize the release's body message.
+This workflow automates the process of creating GitHub releases by applying tags to your repositories through the GitHub API. It allows for the generation of both regular releases and pre-releases.It takes inputs dynamically from a CSV file.
 The workflow can be triggered based on your specific release criteria.
 
 ## Inputs
 
 The workflow accepts the following inputs:
-- `TAG` (required): The tag that you want to create and publish.
-- `BODY` (optional, default: 'Changes in this Release'): A custom message for the release body, describing the changes in this release.
-- `PRE_RELEASE` (required, default: False): A boolean (True/False) indicating whether the release is a pre-release or not.
-- `DRAFT` (optional, default: False): A boolean (True/False) indicating whether the release should be a draft.
-- `ONLY_TAG` (optional, string, default: false): Set to true if you want to create only a tag without a full release.
-- `BRANCH` (required, string): The name of the branch from which the release will be created.
-- `LATEST` (optional, string, default: true): Set too false to prevent marking the release as the latest.
-
+- `CSV_FILE` (required:false, string, default: ./release/gh_release/repos.csv): This input specifies the path to the CSV file. The content of the CSV file should adhere to the format: `REPO, TAG, ONLY_TAG, BRANCH, LATEST, BODY, PRE_RELEASE, DRAFT, MESSAGE`.
+    - `REPO` : The name of the repository without the .git extension. The name is not case sensitive.
+    - `TAG` : The tag that you want to create and publish.
+    - `ONLY_TAG` : Set to true if you want to create only a tag without a full release.
+    - `BRANCH` : The name of the branch from which the release will be created.
+    - `LATEST` : Set to false to prevent marking the release as the latest.
+    - `BODY` : A custom message for the release body, describing the changes in this release.
+    - `PRE_RELEASE` : A boolean (True/False) indicating whether the release is a pre-release or not.
+    - `DRAFT` : A boolean (True/False) indicating whether the release should be a draft.
+    - `MESSAGE` : The tag message.
+  
 ## Secrets
 
 This workflow requires the following secrets to be set in your GitHub repository:
@@ -27,57 +29,23 @@ This workflow requires the following secrets to be set in your GitHub repository
 
 Here's an example of how you can use this workflow to create a release:
 ```yaml
-name: Tagging of repos
+name:  workflow for mosip github releases
 
 on:
   workflow_dispatch:
     inputs:
-      TAG:
-        description: 'Tag to be published'
-        required: true
-        type: string
-      BODY:
-        description: 'Release body message'
-        required: true
-        default: 'Changes in this Release'
-        type: string
-      PRE_RELEASE:
-        description: 'Pre-release? True/False'
-        required: false
-        default: 'false'
-        type: string
-      DRAFT:
-        description: 'Draft? True/False'
-        required: false
-        default: 'false'
-        type: string
-      ONLY_TAG:
-        description: "Only Tag"
+      CSV_FILE:
+        description: path of csv file
         required: false
         type: string
-        default: 'false'
-      BRANCH:
-        description: 'Branch name'
-        required: true
-        type: string
-      LATEST:
-        description: 'Latest release'
-        required: false
-        type: string
-        default: 'true'
-
+        default: ./release/gh_release/repos.csv
 jobs:
-  tag-branch:
-    uses: mosip/kattu/.github/workflows/tag.yml@master
+  workflow-tag:
+    needs: chk_token
+    uses: mosip/kattu/.github/workflows/tag.yaml@master
     with:
-      TAG: ${{ inputs.TAG }}
-      BODY: ${{ inputs.BODY }}
-      PRE_RELEASE: ${{ inputs.PRE_RELEASE }}
-      DRAFT: ${{ inputs.DRAFT }}
-      ONLY_TAG: ${{ inputs.ONLY_TAG }}
-      BRANCH: ${{ inputs.BRANCH }}
-      LATEST: ${{ inputs.LATEST }}
+      CSV_FILE: ${{ inputs.CSV_FILE }}
     secrets:
-      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
-      TOKEN: ${{ secrets.ACTION_PAT }}
+      TOKEN: "${{ secrets.TOKEN }}"
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 ```

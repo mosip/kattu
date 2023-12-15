@@ -9,7 +9,8 @@ The workflow can be customized to fit your release process, such as handling Mav
 ## Inputs
 
 This workflow accepts the following inputs:
-- `MESSAGE` (optional, default: 'Release Preparation'): A custom message that describes the purpose of the workflow run. You can use this to differentiate between release and pre-release preparations.
+- `REPO_URL` (required): Name of the owner of the repository and repository name
+- `REPO_BRANCH` (required): The name of the branch for which release changes need to be made.
 - `RELEASE_TAG` (required): The tag associated with the release you're preparing.
 - `SNAPSHOT_TAG` (required): The tag that needs to be replaced during the preparation.
 - `BASE` (required): The base branch for creating a pull request.
@@ -29,10 +30,12 @@ name: Release/pre-release Preparation.
 on:
   workflow_dispatch:
     inputs:
-      MESSAGE:
-        description: 'Triggered for release or pe-release'
-        required: false
-        default: 'Release Preparation'
+      REPO_URL:
+        description: 'Repo URL ( EX. mosip/< repo name > )'
+        required: true
+      REPO_BRANCH:
+        description: 'Repo Branch'
+        required: true
       RELEASE_TAG:
         description: 'tag to update'
         required: true
@@ -46,11 +49,12 @@ jobs:
   maven-release-preparation:
     uses: mosip/kattu/.github/workflows/release-changes.yml@master
     with:
-      MESSAGE: ${{ inputs.MESSAGE }}
+      REPO_URL: ${{ inputs.REPO_URL }}
+      REPO_BRANCH: ${{ inputs.REPO_BRANCH }}
       RELEASE_TAG: ${{ inputs.RELEASE_TAG }}
       SNAPSHOT_TAG: ${{ inputs.SNAPSHOT_TAG }}
       BASE: ${{ inputs.BASE }}
     secrets:
-      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
       ACTION_PAT: ${{ secrets.ACTION_PAT }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_MOSIP_WEBHOOK_URL }}
 ```

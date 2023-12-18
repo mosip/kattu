@@ -34,6 +34,14 @@ jobs:
         server-id: ossrh # Value of the distributionManagement/repository/id field of the pom.xml
         settings-path: ${{ github.workspace }} # location for the settings.xml file
 
+    - name: Cache local Maven repository
+      uses: actions/cache@v3
+      with:
+        path: ~/.m2/repository
+        key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+        restore-keys: |
+          ${{ runner.os }}-maven-
+
     - name: Setup branch and env
       run: |
         # Strip git ref prefix from version
@@ -57,7 +65,7 @@ jobs:
 
     - name: Publish the maven package
       run: |
-        cd ${{ inputs.SERVICE_LOCATION }} && mvn -U -B deploy -Dmaven.wagon.http.retryHandler.count=2 -DaltDeploymentRepository=ossrh::default::${{ secrets.OSSRH_URL }} -s $GITHUB_WORKSPACE/settings.xml -f pom.xml
+        cd ${{ inputs.SERVICE_LOCATION }} && mvn -DskipTests -U -B deploy -Dmaven.wagon.http.retryHandler.count=2 -Dparallel=all -DperCoreThreadCount=true -T 4 -DaltDeploymentRepository=ossrh::default::${{ secrets.OSSRH_URL }} -s $GITHUB_WORKSPACE/settings.xml -f pom.xml
       env:
         GITHUB_TOKEN: ${{secrets.OSSRH_TOKEN}}
         GPG_TTY: $(tty)

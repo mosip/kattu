@@ -106,6 +106,14 @@ jobs:
         with:
           node-version: ${{ inputs.NODE_VERSION }}
 
+      - name: Cache npm dependencies
+        uses: actions/cache@v3.3.1
+        with:
+          path: '~/.npm'
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
       - name: Install npm dependencies
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}

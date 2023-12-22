@@ -23,8 +23,16 @@ jobs:
       with:
         node-version: '16'
 
+    - name: Cache npm dependencies
+      uses: actions/cache@v2
+      with:
+        path: '~/.npm'
+        key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-npm-
+
     - name: NPM Install
-      run: cd ${{ inputs.SERVICE_LOCATION }} && npm install --ignore-scripts
+      run: cd ${{ inputs.SERVICE_LOCATION }} && npm install
 
     - name: NPM Build
       run: cd ${{ inputs.SERVICE_LOCATION }} && npm run-script build -- --prod --base-href . --output-path=dist

@@ -1,0 +1,36 @@
+name: PostgreSQL Setup and Scripts Test
+
+on:
+  workflow_call:
+    inputs:
+      DB_LOCATION:
+        required: true
+        type: string
+
+jobs:
+  postgres-setup-and-scripts-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v2
+      - name: Wait for PostgreSQL to Start
+        run: sleep 5
+      - name: Run DB Test
+        run: |
+          cd ${{ inputs.DB_LOCATION }}
+          export SU_USER_PWD=postgres
+          export DBUSER_PWD=postgres
+          sed -i 's/DB_SERVERIP=.*/DB_SERVERIP=localhost/g' deploy.properties
+          sed -i 's/DB_PORT=.*/DB_PORT=5432/g' deploy.properties
+          sed -i 's/SU_USER=.*/SU_USER=postgres/g' deploy.properties
+          chmod +x deploy.sh
+          ./deploy.sh deploy.properties

@@ -1,0 +1,192 @@
+name: Android Publish
+
+on:
+  workflow_call:
+    inputs:
+      RELEASE:
+        description: 'Internal/Beta'
+        required: true
+        type: string
+      NODE_VERSION:
+        default: "16.x"
+        type: string
+      RELEASE_KEYSTORE_ALIAS:
+        default: androidreleasekey
+        type: string
+      MIMOTO_HOST:
+        description: "Mimoto backend service URL"
+        required: true
+        default: "https://api.sandbox.mosip.net"
+        type: string
+      ESIGNET_HOST:
+        description: "Esignet backend service URL"
+        required: true
+        default: "https://api.sandbox.mosip.net"
+        type: string
+      APPLICATION_THEME:
+        description: "Application Theme"
+        required: true
+        type: string
+      BUILD_DESCRIPTION:
+        description: "What to test"
+        required: true
+        default: "QA-Triple environment"
+        type: string
+      ALLOW_ENV_EDIT:
+        description: "Edit ENV"
+        required: true
+        type: string
+      ANDROID_ARTIFACT_NAME:
+        description: "Android Artifact name"
+        required: true
+        default: "Android App"
+        type: string
+      APP_FLAVOR:
+        description: 'Select App flavor'
+        required: true
+        default: 'App'
+        type: string
+      SERVICE_LOCATION:
+        description: "Service Location"
+        required: true
+        default: "."
+        type: string
+      ANDROID_SERVICE_LOCATION:
+        description: "Android Service Location"
+        required: true
+        default: "android"
+        type: string
+      BUILD_SCRIPT_LOCATION:
+        description: "Android build script Location"
+        required: true
+        default: "scripts"
+        type: string
+      SCRIPT_NAME: 
+        description: "Build script name"
+        required: true
+        default: "./android-build.sh"
+        type: string
+      ANDROID_ARTIFACT_PATH:
+        description: "Android Artifact path"
+        required: true
+        default: "android/app/build/outputs"
+        type: string
+    secrets:
+      ANDROID_KEYSTORE_FILE:
+        required: true
+      RELEASE_KEYSTORE_PASSWORD:
+        required: true
+      INJI_ANDROID_PLAY_STORE_CONFIG_JSON:
+        required: true
+      SLACK_WEBHOOK_URL:
+        required: true
+
+jobs:
+  deploy-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3.1.0
+      - uses: actions/setup-node@v3
+        with:
+          node-version: ${{ inputs.NODE_VERSION }}
+
+      - name: Cache npm dependencies
+        uses: actions/cache@v3.3.1
+        with:
+          path: '~/.npm'
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
+      - name: Check for git tag
+        if: ${{ inputs.RELEASE == 'beta' }}
+        run: |
+          cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}
+          cd ${{ inputs.BUILD_SCRIPT_LOCATION }}
+          ./git-tag.sh
+
+      - name: Install npm dependencies
+        run: |
+          cd ${{ inputs.SERVICE_LOCATION }}
+          npm ci
+
+      - name: Echo branch name
+        run: |
+          echo "BRANCH_NAME=$(echo ${{ github.ref }} | sed -e 's,.*/\(.*\),\1,')" >> $GITHUB_ENV
+
+      - name: Generate keystore
+        run: |
+          echo "$ANDROID_KEYSTORE_FILE" > release.keystore.b64
+          base64 -d -i release.keystore.b64 > android/app/release.keystore
+        env:
+          ANDROID_KEYSTORE_FILE: ${{ secrets.ANDROID_KEYSTORE_FILE }}
+
+      - name: Create Google Play Config file
+        run: |
+          cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}
+          echo "$INJI_ANDROID_PLAY_STORE_CONFIG_JSON" > play_config.json.b64
+          base64 -d -i play_config.json.b64 > play_config.json
+        env:
+          INJI_ANDROID_PLAY_STORE_CONFIG_JSON: ${{ secrets.INJI_ANDROID_PLAY_STORE_CONFIG_JSON }}
+
+      - name: Create build and upload to play console
+        if: ${{ inputs.RELEASE != 'beta' }}
+        run: |
+          cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}
+          cd ${{ inputs.BUILD_SCRIPT_LOCATION }}
+          ${{ inputs.SCRIPT_NAME }}
+        env:
+          MIMOTO_HOST: ${{ inputs.MIMOTO_HOST }}
+          ESIGNET_HOST: ${{ inputs.ESIGNET_HOST }}
+          APPLICATION_THEME: ${{ inputs.APPLICATION_THEME }}
+          RELEASE_KEYSTORE_ALIAS: ${{ inputs.RELEASE_KEYSTORE_ALIAS }}
+          RELEASE_KEYSTORE_PASSWORD: "${{secrets.RELEASE_KEYSTORE_PASSWORD}}"
+          CREDENTIAL_REGISTRY_EDIT: ${{ inputs.ALLOW_ENV_EDIT }}
+          SLACK_WEBHOOK_URL: "${{ secrets.SLACK_WEBHOOK_URL }}"
+          BUILD_DESCRIPTION: ${{ inputs.BUILD_DESCRIPTION }}
+          APP_FLAVOR: ${{ inputs.APP_FLAVOR }}
+
+      - name: Create Beta build and upload to play console
+        if: ${{ inputs.RELEASE == 'beta' }}
+        run: |
+          cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}
+          cd ${{ inputs.BUILD_SCRIPT_LOCATION }}
+          ${{ inputs.SCRIPT_NAME }}
+        env:
+          MIMOTO_HOST: ${{ inputs.MIMOTO_HOST }}
+          ESIGNET_HOST: ${{ inputs.ESIGNET_HOST }}
+          APPLICATION_THEME: ${{ inputs.APPLICATION_THEME }}
+          RELEASE_KEYSTORE_ALIAS: ${{ inputs.RELEASE_KEYSTORE_ALIAS }}
+          RELEASE_KEYSTORE_PASSWORD: "${{secrets.RELEASE_KEYSTORE_PASSWORD}}"
+          CREDENTIAL_REGISTRY_EDIT: ${{ inputs.ALLOW_ENV_EDIT }}
+          SLACK_WEBHOOK_URL: "${{ secrets.SLACK_WEBHOOK_URL }}"
+          BUILD_DESCRIPTION: ${{ inputs.BUILD_DESCRIPTION }}
+          APP_FLAVOR: ${{ inputs.APP_FLAVOR }}
+
+      - name: Create Build
+        run: |
+          npx jetify
+          cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}
+          ./gradlew :app:assemble${{ inputs.APP_FLAVOR }}Release
+        env:
+          MIMOTO_HOST: ${{ inputs.MIMOTO_HOST }}
+          ESIGNET_HOST: ${{ inputs.ESIGNET_HOST }}
+          APPLICATION_THEME: ${{ inputs.APPLICATION_THEME }}
+          RELEASE_KEYSTORE_ALIAS: ${{ inputs.RELEASE_KEYSTORE_ALIAS }}
+          RELEASE_KEYSTORE_PASSWORD: "${{secrets.RELEASE_KEYSTORE_PASSWORD}}"
+          CREDENTIAL_REGISTRY_EDIT: ${{ inputs.ALLOW_ENV_EDIT }}
+          
+      - name: Upload Artifact to Actions
+        uses: actions/upload-artifact@v3.1.1
+        with:
+          name: ${{ inputs.ANDROID_ARTIFACT_NAME }}
+          path: ${{ inputs.ANDROID_ARTIFACT_PATH }}
+          retention-days: 10
+
+      - uses: 8398a7/action-slack@v3
+        if: failure()
+        with:
+          status: ${{ job.status }}
+          fields: repo,message,author,commit,workflow,job
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

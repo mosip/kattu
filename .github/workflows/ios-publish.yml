@@ -1,0 +1,177 @@
+name: IOS publish
+
+on:
+  workflow_call:
+    inputs:
+      NODE_VERSION:
+        default: "18.x"
+        type: string
+      MIMOTO_HOST:
+        description: "Mimoto backend service URL"
+        required: true
+        default: "https://api.sandbox.mosip.net"
+        type: string
+      ESIGNET_HOST:
+        description: "Esignet backend service URL"
+        required: true
+        default: "https://api.sandbox.mosip.net"
+        type: string
+      APPLICATION_THEME:
+        description: "Application Theme"
+        required: true
+        type: string
+      ALLOW_ENV_EDIT:
+        description: "Edit Registry"
+        required: true
+        type: string
+      TESTFLIGHT_INTERNAL_TESTERS_GROUP:
+        description: "Internal Testers Group"
+        required: true
+        type: string
+      TESTFLIGHT_BETA_APP_DESCRIPTION:
+        description: "What to test"
+        required: true
+        default: "QA-Triple environment build"
+        type: string
+      SERVICE_LOCATION:
+        description: "Service Location"
+        required: true
+        default: "."
+        type: string
+      IOS_SERVICE_LOCATION:
+        description: "IOS Service Location"
+        required: true
+        default: "ios"
+        type: string
+      SCRIPT_NAME: 
+        description: "Build script name"
+        required: true
+        default: "fastlane ios_app_build"
+        type: string
+      APP_FLAVOR:
+        description: 'Select App flavor'
+        required: true
+        default: 'App'
+        type: string
+      IOS_ARTIFACT_NAME:
+        description: "IOS Artifact name"
+        required: true
+        default: "IOS App"
+        type: string
+      IOS_ARTIFACT_PATH:
+        description: "IOS Artifact path"
+        required: true
+        default: "ios/build"
+        type: string
+    secrets:
+      APP_STORE_CONNECT_TEAM_ID:
+        required: true
+      DEVELOPER_APP_ID:
+        required: true
+      INJI_IOS_DEVELOPER_APP_IDENTIFIER:
+        required: true
+      INJI_IOS_DEVELOPER_PORTAL_TEAM_ID:
+        required: true
+      INJI_IOS_FASTLANE_APPLE_ID:
+        required: true
+      INJI_IOS_FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD:
+        required: true
+      GIT_AUTHORIZATION:
+        required: true
+      INJI_IOS_PROVISIONING_PROFILE_SPECIFIER:
+        required: true
+      INJI_IOS_TEMP_KEYCHAIN_PASSWORD:
+        required: true
+      INJI_IOS_TEMP_KEYCHAIN_USER:
+        required: true
+      APPLE_KEY_ID:
+        required: true
+      APPLE_ISSUER_ID:
+        required: true
+      APPLE_KEY_CONTENT:
+        required: true
+      MATCH_PASSWORD:
+        required: true
+      SLACK_WEBHOOK_URL:
+        required: true
+
+jobs:
+  build_ios:
+    name: Deploying to Testflight
+    runs-on: macos-13
+
+    steps:
+      - uses: actions/checkout@v3.1.0
+      - uses: actions/setup-node@v3
+        with:
+          node-version: ${{ inputs.NODE_VERSION }}
+
+      - name: Cache npm dependencies
+        uses: actions/cache@v3.3.1
+        with:
+          path: '~/.npm'
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
+      - name: Install npm dependencies
+        run: |
+          cd ${{ inputs.SERVICE_LOCATION }}
+          npm install
+
+      - name: Install Pod # Doing pod install twice to make sure dependency is downloaded properly
+        run: |
+          cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.IOS_SERVICE_LOCATION }}
+          pod install
+          pod install 
+
+      - name: Deploy iOS Beta to TestFlight
+        run: |
+          cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.IOS_SERVICE_LOCATION }}
+          ${{ inputs.SCRIPT_NAME }}
+        env:
+          APP_STORE_CONNECT_TEAM_ID: "${{ secrets.APP_STORE_CONNECT_TEAM_ID }}"
+          DEVELOPER_APP_ID: "${{ secrets.DEVELOPER_APP_ID }}"
+          INJI_IOS_DEVELOPER_APP_IDENTIFIER: "${{ secrets.INJI_IOS_DEVELOPER_APP_IDENTIFIER }}"
+          INJI_IOS_DEVELOPER_PORTAL_TEAM_ID: "${{ secrets.INJI_IOS_DEVELOPER_PORTAL_TEAM_ID }}"
+          INJI_IOS_FASTLANE_APPLE_ID: "${{ secrets.INJI_IOS_FASTLANE_APPLE_ID }}"
+          INJI_IOS_FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD: "${{ secrets.INJI_IOS_FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD }}"
+          GIT_AUTHORIZATION: "${{ secrets.GIT_AUTHORIZATION }}"
+          INJI_IOS_PROVISIONING_PROFILE_SPECIFIER: "${{ secrets.INJI_IOS_PROVISIONING_PROFILE_SPECIFIER }}"
+          INJI_IOS_TEMP_KEYCHAIN_PASSWORD: "${{ secrets.INJI_IOS_TEMP_KEYCHAIN_PASSWORD }}"
+          INJI_IOS_TEMP_KEYCHAIN_USER: "${{ secrets.INJI_IOS_TEMP_KEYCHAIN_USER }}"
+          APPLE_KEY_ID: "${{ secrets.APPLE_KEY_ID }}"
+          APPLE_ISSUER_ID: "${{ secrets.APPLE_ISSUER_ID }}"
+          APPLE_KEY_CONTENT: "${{ secrets.APPLE_KEY_CONTENT }}"
+          SLACK_WEBHOOK_URL: "${{ secrets.SLACK_WEBHOOK_URL }}"
+          MATCH_PASSWORD: "${{ secrets.MATCH_PASSWORD }}"
+          APP_FLAVOR: ${{ inputs.APP_FLAVOR }}
+          MIMOTO_HOST: ${{ inputs.MIMOTO_HOST }}
+          ESIGNET_HOST: ${{ inputs.ESIGNET_HOST }}
+          APPLICATION_THEME: ${{ inputs.APPLICATION_THEME }}
+          CREDENTIAL_REGISTRY_EDIT: ${{ inputs.ALLOW_ENV_EDIT }}
+          TESTFLIGHT_INTERNAL_TESTERS_GROUP: ${{ inputs.TESTFLIGHT_INTERNAL_TESTERS_GROUP }}
+          TESTFLIGHT_BETA_APP_DESCRIPTION: ${{ inputs.TESTFLIGHT_BETA_APP_DESCRIPTION }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3.1.1
+        with:
+          name: ${{ inputs.IOS_ARTIFACT_NAME }}
+          path: ${{ inputs.IOS_ARTIFACT_PATH }}
+          retention-days: 10
+
+      - name: Upload Runner Log on Failure
+        if: failure()
+        uses: actions/upload-artifact@v3.1.1
+        with:
+          name: runner-log
+          path: /Users/runner/Library/Logs/gym/
+          retention-days: 1
+
+      - uses: 8398a7/action-slack@v3
+        if: failure()
+        with:
+          status: ${{ job.status }}
+          fields: repo,message,author,commit,workflow,job
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

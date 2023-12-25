@@ -15,8 +15,52 @@ on:
         required: true
 
 jobs:
+  check-existing-tag:
+    name: Check Existing Tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Check Existing Tag
+        id: check_tag
+        run: |
+          failed_repos_tags=()
+          while IFS=, read -r REPO TAG ONLY_TAG BRANCH LATEST BODY PRE_RELEASE DRAFT MESSAGE; do
+            if [[ "$REPO" == "REPO" ]]; then
+              echo "CSV header line ignoring";
+              continue;
+            fi
+
+            REPO=$(echo "$REPO" | tr -d '"')
+            TAG=$(echo "$TAG" | tr -d '"')
+
+            echo "Checking if tag $TAG already exists for repo $REPO"
+
+            # Check if tag already exists
+            if git ls-remote --tags "https://github.com/$REPO.git" "$TAG" | grep -q "$TAG"; then
+              echo "Error: Tag $TAG already exists for repo $REPO"
+              failed_repos_tags+=("$REPO:$TAG")
+            else
+              echo "Tag $TAG is not present for repo $REPO. Proceeding with the workflow."
+            fi
+          done < "${{ inputs.CSV_FILE }}"
+          
+          # Print the failed repositories and tags
+          if [[ ${#failed_repos_tags[@]} -gt 0 ]]; then
+            echo "::error::❌ Job failed for the following repositories and tags:"
+            for repo_tag in "${failed_repos_tags[@]}"; do
+            IFS=':' read -r repo tag <<< "$repo_tag"
+            echo "  - Repository: $repo"
+            echo "    Tag: $tag"
+            done
+            echo "FAILED_REPOS_TAGS=${failed_repos_tags[@]}" >> $GITHUB_ENV
+            exit 1
+          fi
+          
   create-releases-from-csv:
     name: Create Releases from CSV
+    needs: check-existing-tag
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code

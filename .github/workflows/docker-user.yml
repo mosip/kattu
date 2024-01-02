@@ -19,7 +19,7 @@ on:
         required: true
 
 jobs:
-  Find-user-in-dockerfile:
+  user-dockerfile:
     runs-on: ubuntu-latest
     steps:
       - name: Check 'mosip' user in Dockerfiles

@@ -9,11 +9,11 @@ on:
         default: ''
         type: string
     secrets:
-      USERNAME:
-        description: 'Provide Docker Hub username'
+      RELEASE_DOCKER_HUB:
         required: true
-      TOKEN:
-        description: 'Provide Docker Hub token'
+      ACTOR_DOCKER_HUB:
+        required: true
+      DEV_NAMESPACE_DOCKER_HUB:
         required: true
       SLACK_WEBHOOK_URL:
         required: true

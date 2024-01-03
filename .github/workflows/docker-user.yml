@@ -1,0 +1,41 @@
+name:  Manual workflow to find user in docker file
+
+on:
+  workflow_call:
+    inputs:
+      FIND_USER:
+        description: 'To find user in docker file'
+        required: true
+        default: ''
+        type: string
+    secrets:
+      RELEASE_DOCKER_HUB:
+        required: true
+      ACTOR_DOCKER_HUB:
+        required: true
+      DEV_NAMESPACE_DOCKER_HUB:
+        required: true
+      SLACK_WEBHOOK_URL:
+        required: true
+
+jobs:
+  user-dockerfile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check 'mosip' user in Dockerfiles
+        run: |
+          DOCKERFILES=$(git ls-files | grep Dockerfile)
+          for FILE in $DOCKERFILES; do
+              if ! grep -q "USER mosip" "$FILE"; then
+                  echo "Error: 'mosip' user is not defined in $FILE. Please define the 'mosip' user in the Dockerfile."
+                  exit 1
+              fi
+          done
+
+      - uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          fields: repo,message,author,commit,workflow,job # selectable (default: repo,message)
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} # required
+        if: failure() # Pick up events even if the job fails or is canceled.

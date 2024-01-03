@@ -81,6 +81,17 @@ jobs:
       - name: Get current date
         run: echo "BUILD_TIME=$(date +'%Y-%m-%d-%H-%M-%S')"  >> $GITHUB_ENV
 
+      - name: Check 'mosip' user in Dockerfiles
+        run: |
+            DOCKERFILES=$(git ls-files | grep Dockerfile)
+            for FILE in $DOCKERFILES; do
+                if ! grep -q "container_user=mosip" "$FILE"; then
+                    echo "Error: 'mosip' user is not defined in $FILE. Please define the 'mosip' user in the Dockerfile."
+                    exit 1
+                fi
+            done
+        
+
       - name: Build check for Docker label
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}

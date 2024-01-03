@@ -83,7 +83,7 @@ jobs:
 
       - name: Check 'mosip' user in Dockerfiles
         run: |
-            DOCKERFILES=$(git ls-files | grep Dockerfile | grep -v Dockerfile_DO_NOT_BUILD)
+            DOCKERFILES=$(git ls-files | grep Dockerfile | grep -v Dockerfile*)
               for FILE in $DOCKERFILES; do
               if ! grep -q "ARG container_user=mosip" "$FILE" || ! grep -q "ARG container_user_group=mosip" "$FILE" || ! grep -q "ARG container_user_uid=1001" "$FILE" || ! grep -q "ARG container_user_gid=1001" "$FILE" || ! grep -q "groupadd -g \${container_user_gid} \${container_user_group}" "$FILE" || ! grep -q "&& useradd -u \${container_user_uid} -g \${container_user_group} -s /bin/sh -m \${container_user}" "$FILE" || ! grep -q "WORKDIR /home/\${container_user}" "$FILE" || ! grep -q "RUN chown -R \${container_user}:\${container_user} /home/\${container_user}" "$FILE" || ! grep -q "USER \${container_user_uid}:\${container_user_gid}" "$FILE"; then
                 echo "Error: 'mosip' user is not properly defined in $FILE. Please define the 'mosip' user with the specified arguments in the Dockerfile."

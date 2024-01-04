@@ -18,10 +18,10 @@ on:
 #        description: 'replaced OSSRH_RELEASE_URL'
 #        required: true
 #       type: string
-#      BASE:
-#        description: 'base branch for PR'
-#        required: true
-#        type: string
+      BASE:
+        description: 'base branch for PR'
+        required: true
+        type: string
     secrets:
       SLACK_WEBHOOK_URL:
         required: true
@@ -60,7 +60,7 @@ jobs:
           #body: Automated PR for ${{ github.event.inputs.RELEASE_TAG }} release.
           branch: ${{ github.event.inputs.REPO_BRANCH }}
           delete-branch: false
-#          base: ${{ github.event.inputs.BASE }}
+          base: ${{ github.event.inputs.BASE }}
           token: ${{ secrets.ACTION_PAT }}
           signoff: true
 

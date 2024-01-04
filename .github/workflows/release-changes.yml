@@ -1,4 +1,4 @@
-name: Release/pre-release Preparation.
+name: Post release Preparation.
 
 on:
   workflow_call:
@@ -10,14 +10,14 @@ on:
       REPO_BRANCH:
         required: true
         type: string
-      RELEASE_TAG:
-        description: 'tag to update'
-        required: true
-        type: string
-      SNAPSHOT_TAG:
-        description: 'tag to be replaced'
-        required: true
-        type: string
+#      OSSRH_SNAPSHOT_URL:
+#        description: 'update OSSRH_SNAPSHOT_URL'
+#        required: true
+#        type: string
+#      RELEASE_URL:
+#        description: 'replaced OSSRH_RELEASE_URL'
+#        required: true
+ #       type: string
       BASE:
         description: 'base branch for PR'
         required: true
@@ -29,7 +29,7 @@ on:
         required: true
 
 jobs:
-  maven-release-preparation:
+  maven-post-release-preparation:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -47,82 +47,19 @@ jobs:
           sudo apt-get update
           sudo apt-get install xmlstarlet libxml2-utils
 
-      - name: Mannualy changing the pom versions
-        run: find . -type f -name "*pom.xml" -print0 | xargs -0 sed -i "s/${{ github.event.inputs.SNAPSHOT_TAG }}/${{ github.event.inputs.RELEASE_TAG }}/g"
-      - name: update Branch name in badges
-        run: |
-          sed -i 's/branch=[^\&]*)]/branch=${{ env.BRANCH_NAME }}\)]/g'  README.md
-          sed -i 's/branch=[^\&]*\&/branch=${{ env.BRANCH_NAME }}\&/g'  README.md
-
-      - name: Updating the Release URL in POM
+      - name: Updating the OSSRH_SNAPSHOT_URL in push-trigger
         run: |
           cd .github/workflows
-          sed -i 's/OSSRH_SNAPSHOT_URL/RELEASE_URL/g' *push-trigger.yml
-
-      - name: Updating libs-snapshot-local to libs-release local for artifactory URL's.
-        run: |
-          if find . -type f -name "*Dockerfile" -print -quit | grep -q .; then
-            find . -type f -name "*Dockerfile" -print0 | xargs -0 sed -i "s/libs-snapshot-local/libs-release-local/g"
-          else
-            echo "No Dockerfiles found."
-          fi
-
-      - name: removing -DskipTests
-        run: sed -i "s/<skip>true<\/skip>/<skip>false<\/skip>/"       $( find ./ -type f -name "*pom.xml" )
-        
-      #- name: removing --Dgpg.skip
-      #  run: find . -type f -name "*push-trigger.yml" -print0 | xargs -0 sed -i "s/"-Dgpg.skip"//g"
-
-      - name: Check if the *SNAPSHOT is present in the dependency section of the POM file.
-        run: |
-          # Find all pom.xml files
-          pomfiles=$(find ./ -type f -name "*pom.xml")
-          
-          snapshot_dependencies=()
-          
-          # Function to resolve a version and add it to snapshot_dependencies if it's a SNAPSHOT
-          resolve_version() {
-            local version=$1
-            local pomfile=$2
-          
-            output=$(mvn help:evaluate -Dexpression=$version -f $pomfile | grep -vE "INFO|WARNING")
-          
-            if [[ $output == *"ERROR"* ]]; then
-              echo "VERSION $version not found; EXITING"
-              exit 1
-            elif [[ $output == *"-SNAPSHOT"* ]]; then
-              echo "Adding VERSION $version to snapshot_dependencies list"
-              snapshot_dependencies+=("\n$pomfile: <$version>$output</$version>")
-            fi
-          }
-          
-          for pomfile in $pomfiles; do
-            echo "===================================== $pomfile =========================================="
-          
-            # Use xmlstarlet to extract dependency versions
-            dv=$(xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:dependencies/s:dependency/s:version" $pomfile | grep '[${}]' | sed 's/[${}]//g')
-          
-            echo "Dependency versions in $pomfile = $dv" | sed -z 's/\n/ /g'
-          
-            for v in $dv; do
-              echo -e "\nv=$v"
-              resolve_version "$v" "$pomfile"
-            done
-          done
-          
-          if [[ ${#snapshot_dependencies[@]} -gt 0 ]]; then
-            echo -e "Snapshot dependencies found: ${snapshot_dependencies[*]}"
-            exit 1
-          fi
+          sed -i 's/RELEASE_URL/OSSRH_SNAPSHOT_URL/g' *push-trigger.yml
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v5.0.2
         with:
           commit-message: Updated Pom versions for release changes
-          title: Release changes
-          body: Automated PR for ${{ github.event.inputs.RELEASE_TAG }} release.
-          branch: releas-branch
-          delete-branch: true
+          title: Post release changes
+          #body: Automated PR for ${{ github.event.inputs.RELEASE_TAG }} release.
+          branch: ${{ github.event.inputs.REPO_BRANCH }}
+          delete-branch: false
           base: ${{ github.event.inputs.BASE }}
           token: ${{ secrets.ACTION_PAT }}
           signoff: true

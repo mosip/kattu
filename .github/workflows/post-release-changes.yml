@@ -58,8 +58,8 @@ jobs:
           commit-message: Updated Pom versions for release changes
           title: Post release changes
           #body: Automated PR for ${{ github.event.inputs.RELEASE_TAG }} release.
-          branch: ${{ github.event.inputs.REPO_BRANCH }}
-          delete-branch: false
+          branch: post-releas-branch
+          delete-branch: true
           base: ${{ github.event.inputs.BASE }}
           token: ${{ secrets.ACTION_PAT }}
           signoff: true

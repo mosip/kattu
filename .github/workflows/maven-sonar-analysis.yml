@@ -43,6 +43,14 @@ jobs:
           server-id: ossrh # Value of the distributionManagement/repository/id field of the pom.xml
           settings-path: ${{ github.workspace }} # location for the settings.xml file
 
+      - name: Cache local Maven repository
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
       - name: Setup branch and env
         run: |
           # Strip git ref prefix from version
@@ -67,7 +75,7 @@ jobs:
 
       - name: Analyze with SonarCloud
         run: |
-          cd ${{ inputs.SERVICE_LOCATION }} &&  mvn -U -B verify sonar:sonar -Dsonar.projectKey=${{ inputs.PROJECT_KEY }} -Dsonar.organization=${{ secrets.ORG_KEY }} -Dsonar.host.url=${{ inputs.SONAR_URL }} -Dsonar.login=${{ secrets.SONAR_TOKEN }} --file pom.xml -s $GITHUB_WORKSPACE/settings.xml
+          cd ${{ inputs.SERVICE_LOCATION }} &&  mvn -U -B verify sonar:sonar -Dmaven.wagon.http.retryHandler.count=2 -Dsonar.projectKey=${{ inputs.PROJECT_KEY }} -Dsonar.organization=${{ secrets.ORG_KEY }} -Dsonar.host.url=${{ inputs.SONAR_URL }} -Dsonar.login=${{ secrets.SONAR_TOKEN }} --file pom.xml -s $GITHUB_WORKSPACE/settings.xml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

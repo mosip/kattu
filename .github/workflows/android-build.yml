@@ -1,0 +1,89 @@
+name: Android Build
+
+env:
+  DUMMY_DEBUG_KEYSTORE_PASSWORD: 'password'
+
+on:
+  workflow_call:
+    inputs:
+      NODE_VERSION:
+        default: "16.x"
+        type: string
+      DEBUG_KEYSTORE_ALIAS:
+        default: androiddebugkey
+        type: string
+      SERVICE_LOCATION:
+        description: "Service Location"
+        required: true
+        default: "."
+        type: string
+      ANDROID_SERVICE_LOCATION:
+        description: "Android Service Location"
+        required: true
+        default: "android"
+        type: string
+      BUILD_SCRIPT_LOCATION:
+        description: "Android build script Location"
+        required: true
+        default: "scripts"
+        type: string
+      SCRIPT_NAME: 
+        description: "Build script name"
+        required: true
+        default: "./android-build.sh"
+        type: string
+    secrets:
+      DEBUG_KEYSTORE_PASSWORD:
+        required: true
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3.1.0
+      - uses: actions/setup-node@v3
+        with:
+          node-version: ${{ inputs.NODE_VERSION }}
+
+      - name: Cache npm dependencies
+        uses: actions/cache@v3.3.1
+        with:
+          path: '~/.npm'
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
+      - name: Install npm dependencies
+        run: |
+          cd ${{ inputs.SERVICE_LOCATION }}
+          npm ci
+
+      - name: Echo branch name
+        run: |
+          echo "BRANCH_NAME=$(echo ${{ github.ref }} | sed -e 's,.*/\(.*\),\1,')" >> $GITHUB_ENV
+
+      - name: Generate keystore for build
+        run: |
+          keytool \
+          -genkey -v \
+          -storetype PKCS12 \
+          -keyalg RSA \
+          -keysize 2048 \
+          -validity 10000 \
+          -storepass $DEBUG_KEYSTORE_PASSWORD \
+          -keypass $DEBUG_KEYSTORE_PASSWORD \
+          -alias $DEBUG_KEYSTORE_ALIAS \
+          -keystore android/app/debug.keystore \
+          -dname "CN=io.mosip.residentapp,OU=,O=,L=,S=,C=US"
+        env:
+          DEBUG_KEYSTORE_PASSWORD: ${{ secrets.DEBUG_KEYSTORE_PASSWORD || env.DUMMY_DEBUG_KEYSTORE_PASSWORD }}
+          DEBUG_KEYSTORE_ALIAS: ${{ inputs.DEBUG_KEYSTORE_ALIAS }}
+
+      - name: Create Build
+        run: |
+          cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}
+          cd ${{ inputs.BUILD_SCRIPT_LOCATION }}
+          ${{ inputs.SCRIPT_NAME }}
+        env:
+          DEBUG_KEYSTORE_ALIAS: ${{ inputs.DEBUG_KEYSTORE_ALIAS }}
+          DEBUG_KEYSTORE_PASSWORD: ${{ secrets.DEBUG_KEYSTORE_PASSWORD || env.DUMMY_DEBUG_KEYSTORE_PASSWORD }}

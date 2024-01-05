@@ -9,11 +9,12 @@ on:
         type: string
       ANDROID_LOCATION:
         description: 'ANDROID LOCATION'
-        required: true
+        required: false
         type: string
+        default: false
       GRADLEW_ARGS:
         description: 'Provide gradlew arguments'
-        required: true
+        required: false
         type: string
     secrets:
       NPM_AUTH_TOKEN:
@@ -38,21 +39,39 @@ jobs:
           node-version: '16'
           registry-url: 'https://registry.npmjs.org/'
 
+      - name: Cache Gradle packages
+        uses: actions/cache@v3.3.1
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle') }}
+          restore-keys: ${{ runner.os }}-gradle-
+
+      - name: Cache npm dependencies
+        uses: actions/cache@v3.3.1
+        with:
+          path: '~/.npm'
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
       - name: NPM Install Dependencies
         run: cd ${{ inputs.SERVICE_LOCATION }} && npm install
 
       - name: Build APK via Gradlew
+        if: ${{ inputs.ANDROID_LOCATION != 'false' }}
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_LOCATION }}
           sed -i -e 's/\r$//' ./gradlew
           chmod +x ./gradlew
           ./gradlew ${{ inputs.GRADLEW_ARGS }}
 
-      - name: Verify the build Gradlew application
+      - name: Verify the build application
         run: cd ${{ inputs.SERVICE_LOCATION }} && npm run verify
 
       - name: Publish package
-        run: cd ${{ inputs.SERVICE_LOCATION }} && npm publish
+        run: cd ${{ inputs.SERVICE_LOCATION }} && npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_AUTH_TOKEN }}
 

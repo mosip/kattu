@@ -1,0 +1,58 @@
+name: IOS Build
+
+on:
+  workflow_call:
+    inputs:
+      NODE_VERSION:
+        default: "18.x"
+        type: string
+      SERVICE_LOCATION:
+        description: "Service Location"
+        required: true
+        default: "."
+        type: string
+      IOS_SERVICE_LOCATION:
+        description: "IOS Service Location"
+        required: true
+        default: "ios"
+        type: string
+      SCRIPT_NAME: 
+        description: "Build script name"
+        required: true
+        default: "fastlane ios_app_build"
+        type: string
+
+jobs:
+  build_ios:
+    name: Building the IPA
+    runs-on: macos-13
+
+    steps:
+      - uses: actions/checkout@v3.1.0
+      - uses: actions/setup-node@v3
+        with:
+          node-version: ${{ inputs.NODE_VERSION }}
+
+      - name: Cache npm dependencies
+        uses: actions/cache@v3.3.1
+        with:
+          path: '~/.npm'
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
+      - name: Install npm dependencies
+        run: |
+          cd ${{ inputs.SERVICE_LOCATION }}
+          npm install
+
+      - name: Install Pod # Doing pod install twice to make sure dependency is downloaded properly
+        run: |
+          cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.IOS_SERVICE_LOCATION }}
+          pod install
+          pod install
+
+      - name: Build iOS
+        run: |
+          cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.IOS_SERVICE_LOCATION }}
+          ${{ inputs.SCRIPT_NAME }}

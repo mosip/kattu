@@ -14,6 +14,10 @@ on:
         required: false
         type: string
         default: "mosip_${{ github.event.repository.name }}"
+      NPM_BUILD_TYPE:
+        required: false
+        type: string
+        default: 'NG'
     secrets:
       SONAR_TOKEN:
         required: true
@@ -30,11 +34,32 @@ jobs:
     - uses: actions/setup-node@v1
       with:
         node-version: '14'
+    - name: Cache npm dependencies
+      uses: actions/cache@v2
+      with:
+        path: '~/.npm'
+        key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-npm-
+
+    - name: Cache SonarCloud packages
+      uses: actions/cache@v3.3.1
+      with:
+        path: ~/.sonar/cache
+        key: ${{ runner.os }}-sonar-${{ hashFiles('**/package-lock.json') }}
+        restore-keys: ${{ runner.os }}-sonar-
+
     - name: npm install
       run: cd ${{ inputs.SERVICE_LOCATION }} && npm install --ignore-scripts
 
-    - name: npm build
+    - name: NPM Build for NG
+      if: ${{ inputs.NPM_BUILD_TYPE == 'NG' }}
       run: cd ${{ inputs.SERVICE_LOCATION }} && npm run-script build -- --prod --base-href . --output-path=dist
+
+    - name: NPM Build for BOB
+      if: ${{ inputs.NPM_BUILD_TYPE == 'BOB' }}
+      run: |
+        cd ${{ inputs.SERVICE_LOCATION }} && npm run build
 
     - name: Setup branch and env
       run: |

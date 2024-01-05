@@ -9,9 +9,16 @@ on:
       SERVICE_LOCATION:
         required: true
         type: string
+      NPM_BUILD_TYPE:
+        required: false
+        type: string
+        default: 'NG'
     secrets:
       SLACK_WEBHOOK_URL:
         required: true
+
+env:
+  ZIP_DIR: 'dist'
 
 jobs:
   npm-build:
@@ -23,15 +30,30 @@ jobs:
       with:
         node-version: '16'
 
+    - name: Cache npm dependencies
+      uses: actions/cache@v2
+      with:
+        path: '~/.npm'
+        key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-npm-
+
     - name: NPM Install
       run: cd ${{ inputs.SERVICE_LOCATION }} && npm install
 
-    - name: NPM Build
+    - name: NPM Build for NG
+      if: ${{ inputs.NPM_BUILD_TYPE == 'NG' }}
       run: cd ${{ inputs.SERVICE_LOCATION }} && npm run-script build -- --prod --base-href . --output-path=dist
+
+    - name: NPM Build for BOB
+      if: ${{ inputs.NPM_BUILD_TYPE == 'BOB' }}
+      run: |
+        echo "ZIP_DIR=lib" >> $GITHUB_ENV
+        cd ${{ inputs.SERVICE_LOCATION }} && npm run build
 
     - name: Zip Build Application
       if: ${{ !contains(github.ref, 'master') || !contains(github.ref, 'main') }}
-      run: cd ${{ inputs.SERVICE_LOCATION }} && zip -r ${{ inputs.BUILD_ARTIFACT }}.zip dist
+      run: cd ${{ inputs.SERVICE_LOCATION }} && zip -r ${{ inputs.BUILD_ARTIFACT }}.zip ${{ env.ZIP_DIR }}
 
     - name: Upload the npm zip file
       if: ${{ !contains(github.ref, 'master') || !contains(github.ref, 'main') }}

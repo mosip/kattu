@@ -34,6 +34,14 @@ jobs:
         server-id: ossrh # Value of the distributionManagement/repository/id field of the pom.xml
         settings-path: ${{ github.workspace }} # location for the settings.xml file
 
+    - name: Cache local Maven repository
+      uses: actions/cache@v3
+      with:
+        path: ~/.m2/repository
+        key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+        restore-keys: |
+          ${{ runner.os }}-maven-
+
     - name: Setup branch and env
       run: |
         # Strip git ref prefix from version
@@ -76,7 +84,7 @@ jobs:
         done
 
     - name: Build with Maven
-      run: cd ${{ inputs.SERVICE_LOCATION }} && mvn -U -B package --file pom.xml -s $GITHUB_WORKSPACE/settings.xml
+      run: cd ${{ inputs.SERVICE_LOCATION }} && mvn -U -B package -Dmaven.wagon.http.retryHandler.count=2 --file pom.xml -s $GITHUB_WORKSPACE/settings.xml
 
     - name: Ready the springboot artifacts
       if: ${{ !contains(github.ref, 'master') || !contains(github.ref, 'main') }}

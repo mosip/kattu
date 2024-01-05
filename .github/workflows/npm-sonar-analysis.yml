@@ -6,6 +6,9 @@ on:
       SERVICE_LOCATION:
         required: true
         type: string
+      NODE_VERSION:
+        default: '14'
+        type: string
       SONAR_URL:
         required: false
         type: string
@@ -31,9 +34,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
-    - uses: actions/setup-node@v1
+    - uses: actions/setup-node@v3
       with:
-        node-version: '14'
+        node-version: ${{ inputs.NODE_VERSION }}
     - name: Cache npm dependencies
       uses: actions/cache@v2
       with:
@@ -50,7 +53,7 @@ jobs:
         restore-keys: ${{ runner.os }}-sonar-
 
     - name: npm install
-      run: cd ${{ inputs.SERVICE_LOCATION }} && npm install --ignore-scripts
+      run: cd ${{ inputs.SERVICE_LOCATION }} && npm install
 
     - name: NPM Build for NG
       if: ${{ inputs.NPM_BUILD_TYPE == 'NG' }}

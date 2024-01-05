@@ -9,6 +9,7 @@ This workflow automates the build process for NPM-based projects. It's designed 
 This workflow requires the following inputs:
 - `BUILD_ARTIFACT` (required): The name of the build artifact that will be generated.
 - `SERVICE_LOCATION` (required): The location of the project to be built.
+- `NPM_BUILD_TYPE` (optional, default: 'NG'): Set to `NG` to build an NPM application with `NG` tool, or `BOB` to build an NPM application with `BOB` tool.
 
 ## Secrets
 

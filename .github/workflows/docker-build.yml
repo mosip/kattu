@@ -81,6 +81,21 @@ jobs:
       - name: Get current date
         run: echo "BUILD_TIME=$(date +'%Y-%m-%d-%H-%M-%S')"  >> $GITHUB_ENV
 
+      - name: Check Dockerfile for 'mosip' user definition
+        run: |
+          DOCKERFILES=$(git ls-files | grep Dockerfile | grep -w "Dockerfile")
+          for FILE in $DOCKERFILES; do
+            for layer in "ARG\s+container_user=mosip" "ARG\s+container_user_group=mosip" "ARG\s+container_user_uid=1001" "ARG\s+container_user_gid=1001" "WORKDIR\s+/home/\\$\{container\_user\}" "chown\s+\-R\s+\\$\{container\_user\}\:\\$\{container\_user\}\s+\/home\/\\$\{container\_user\}" "USER\s+\\$\{container\_user\_uid\}\:\\$\{container\_user\_gid\}"; do
+              layer_count=$(grep -Ev '^$' "$FILE" | grep -Ec "$layer" || true)
+          
+              if [[ $layer_count -ne 1 ]]; then
+                dlayer=$(echo $layer | sed -E 's/\\s\+/ /g' | sed -E 's/\\//g')
+                echo "Docker layer: $dlayer not found in $FILE; EXITING"
+                exit 1
+              fi
+            done
+          done
+
       - name: Build check for Docker label
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}

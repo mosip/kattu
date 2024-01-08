@@ -1,4 +1,4 @@
-name: Post release Preparation.
+name: Post-Release Preparation.
 
 on:
   workflow_call:
@@ -10,14 +10,6 @@ on:
       REPO_BRANCH:
         required: true
         type: string
-#      OSSRH_SNAPSHOT_URL:
-#        description: 'update OSSRH_SNAPSHOT_URL'
-#        required: true
-#        type: string
-#      RELEASE_URL:
-#        description: 'replaced OSSRH_RELEASE_URL'
-#        required: true
-#       type: string
       BASE:
         description: 'base branch for PR'
         required: true
@@ -57,7 +49,6 @@ jobs:
         with:
           commit-message: Updated Pom versions for release changes
           title: Post release changes
-          #body: Automated PR for ${{ github.event.inputs.RELEASE_TAG }} release.
           branch: releas-branch
           delete-branch: true
           base: ${{ github.event.inputs.BASE }}

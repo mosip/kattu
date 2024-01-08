@@ -87,7 +87,8 @@ jobs:
   
         cd "./${{inputs.SERVICE_LOCATION}}"
         
-        if [[ ${{ github.event.repository.name }}="inji"]]; then
+        repo_name="${{ github.event.repository.name }}"
+        if [[ "$repo_name" == "inji" ]]; then
           echo "
           sonar.host.url=${{ inputs.SONAR_URL }}
           sonar.login=${{ secrets.SONAR_TOKEN }}

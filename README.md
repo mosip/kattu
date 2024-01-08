@@ -18,6 +18,6 @@ The documentation for the workflows is available via the following provided link
 * [npm-build.yml](docs/npm-build-readme.md#npm-build-workflow)
 * [npm-publish-to-npm-registry.yml](docs/npm-publish-to-npm-registry-readme.md#npm-publish-to-npm-registry-workflow)
 * [npm-sonar-analysis.yml](docs/npm-sonar-analysis-readme.md#npm-sonar-analysis-workflow)
-* [post-release-changes.yml](docs/post-release-changes-readme.md)
+* [post-release-changes.yml](docs/post-release-changes-readme.md#post-release-changes-workflow)
 * [release-changes.yml](docs/release-changes-readme.md#releasepre-release-preparation-workflow)
 * [tag.yml](docs/tag-readme.md#tagging-of-repos-workflow)

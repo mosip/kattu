@@ -6,6 +6,9 @@ on:
       SERVICE_LOCATION:
         required: true
         type: string
+      NODE_VERSION:
+        default: '14'
+        type: string
       SONAR_URL:
         required: false
         type: string
@@ -31,9 +34,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
-    - uses: actions/setup-node@v1
+    - uses: actions/setup-node@v3
       with:
-        node-version: '14'
+        node-version: ${{ inputs.NODE_VERSION }}
     - name: Cache npm dependencies
       uses: actions/cache@v2
       with:
@@ -50,7 +53,7 @@ jobs:
         restore-keys: ${{ runner.os }}-sonar-
 
     - name: npm install
-      run: cd ${{ inputs.SERVICE_LOCATION }} && npm install --ignore-scripts
+      run: cd ${{ inputs.SERVICE_LOCATION }} && npm install
 
     - name: NPM Build for NG
       if: ${{ inputs.NPM_BUILD_TYPE == 'NG' }}
@@ -67,23 +70,55 @@ jobs:
         echo "BRANCH_NAME=$(echo ${{ github.ref }} | sed -e 's,.*/\(.*\),\1,')" >> $GITHUB_ENV
         echo "GPG_TTY=$(tty)" >> $GITHUB_ENV
 
+    - name: setup sonar properties
+      run: |
+        if [[ -z $SONAR_TOKEN ]]; then
+          echo "\$SONAR_TOKEN environmental variable not set; EXITING;";
+          exit 1;
+        fi
+        if [[ -z $ORG_KEY ]]; then
+          echo "\$ORG_KEY environmental variable not set; EXITING;";
+          exit 1;
+        fi
+        if [[ -z $SONAR_URL ]]; then
+          echo "\$SONAR_URL environmental variable not set; EXITING;";
+          exit 1;
+        fi
+  
+        cd "./${{inputs.SERVICE_LOCATION}}"
+        
+        repo_name="${{ github.event.repository.name }}"
+        if [[ "$repo_name" == "inji" ]]; then
+          echo "
+          sonar.host.url=${{ inputs.SONAR_URL }}
+          sonar.login=${{ secrets.SONAR_TOKEN }}
+          sonar.projectKey=${{ inputs.PROJECT_KEY }}
+          sonar.organization=${{ secrets.ORG_KEY }}
+          sonar.sourceEncoding=UTF-8
+          sonar.typescript.lcov.reportPaths=coverage/lcov.info" >> sonar-project.properties
+        else
+          echo "sonar.host.url=${{ inputs.SONAR_URL }}
+                sonar.login=${{ secrets.SONAR_TOKEN }}
+                sonar.projectKey=${{ inputs.PROJECT_KEY }}
+                sonar.organization=${{ secrets.ORG_KEY }}
+                sonar.sourceEncoding=UTF-8
+                sonar.sources=src
+                sonar.exclusions=**/node_modules/**
+                sonar.tests=src
+                sonar.test.inclusions=**/*.spec.ts
+                sonar.typescript.lcov.reportPaths=coverage/lcov.info" >> sonar-project.properties
+        fi
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        ORG_KEY: ${{ secrets.ORG_KEY }}
+        SONAR_URL: ${{ inputs.SONAR_URL }}
+
     - name: run sonar analysis
       run: |
-        cd "./${{inputs.SERVICE_LOCATION}}"
-        echo "sonar.host.url=${{ inputs.SONAR_URL }}
-              sonar.login=${{ secrets.SONAR_TOKEN }}
-              sonar.projectKey=${{ inputs.PROJECT_KEY }}
-              sonar.organization=${{ secrets.ORG_KEY }}
-              sonar.sourceEncoding=UTF-8
-              sonar.sources=src
-              sonar.exclusions=**/node_modules/**
-              sonar.tests=src
-              sonar.test.inclusions=**/*.spec.ts
-              sonar.typescript.lcov.reportPaths=coverage/lcov.info" >> sonar-project.properties
+        cd "./${{inputs.SERVICE_LOCATION}}"     
         npm install sonar-scanner && npm run sonar
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
     - uses: 8398a7/action-slack@v3
       with:

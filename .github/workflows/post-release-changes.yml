@@ -1,0 +1,59 @@
+name: Post-Release Preparation.
+
+on:
+  workflow_call:
+    inputs:
+      REPO_URL:
+        description: '<github-account-name>/<repo-name>'
+        required: true
+        type: string
+      REPO_BRANCH:
+        required: true
+        type: string
+      BASE:
+        description: 'base branch for PR'
+        required: true
+        type: string
+    secrets:
+      SLACK_WEBHOOK_URL:
+        required: true
+      ACTION_PAT:
+        required: true
+
+jobs:
+  maven-post-release-preparation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          repository: ${{ inputs.REPO_URL }}
+          ref: ${{ inputs.REPO_BRANCH }}
+      - name: Setup branch and env
+        run: |
+          # Strip git ref prefix from version
+          echo "BRANCH_NAME=$(echo ${{ github.ref }} | sed -e 's,.*/\(.*\),\1,')" >> $GITHUB_ENV
+          echo "GPG_TTY=$(tty)" >> $GITHUB_ENV
+
+      - name: Updating the OSSRH_SNAPSHOT_URL in push-trigger
+        run: |
+          cd .github/workflows
+          sed -i 's/RELEASE_URL/OSSRH_SNAPSHOT_URL/g' *push-trigger.yml
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v5.0.2
+        with:
+          commit-message: Updated Pom versions for release changes
+          title: Post release changes
+          branch: releas-branch
+          delete-branch: true
+          base: ${{ github.event.inputs.BASE }}
+          token: ${{ secrets.ACTION_PAT }}
+          signoff: true
+
+      - uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          fields: repo,message,author,commit,workflow,job # selectable (default: repo,message)
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} # required
+        if: failure() # Pick up events even if the job fails or is canceled.

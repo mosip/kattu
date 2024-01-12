@@ -37,6 +37,10 @@ on:
         required: false
         type: string
         default: '**/node_modules/**'
+      SONAR_ARGS:
+        required: false
+        type: string
+        default: ""
     secrets:
       SONAR_TOKEN:
         required: true
@@ -122,7 +126,7 @@ jobs:
     - name: run sonar analysis
       run: |
         cd "./${{inputs.SERVICE_LOCATION}}"     
-        npm install sonar-scanner && npm run sonar -- -Dsonar.login=${{ env.SONAR_TOKEN }} -Dsonar.organization=${{ env.ORG_KEY }}
+        npm install sonar-scanner && npm run sonar -- -Dsonar.login=${{ env.SONAR_TOKEN }} -Dsonar.organization=${{ env.ORG_KEY }} ${{ inputs.SONAR_ARGS }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

@@ -61,6 +61,10 @@ jobs:
     - uses: actions/setup-node@v3
       with:
         node-version: ${{ inputs.NODE_VERSION }}
+    - uses: actions/setup-java@v3
+      with:
+        distribution: 'adopt'
+        java-version: '17'
     - name: Cache npm dependencies
       uses: actions/cache@v2
       with:

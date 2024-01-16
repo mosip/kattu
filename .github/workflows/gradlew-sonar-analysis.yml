@@ -10,6 +10,9 @@ on:
         description: 'ANDROID LOCATION'
         required: true
         type: string
+      JAVA_VERSION:
+        default: '17'
+        type: string
       SONAR_URL:
         required: false
         type: string
@@ -54,6 +57,11 @@ jobs:
       - uses: actions/setup-node@v3.7.0
         with:
           node-version: '16'
+
+      - uses: actions/setup-java@v3
+        with:
+          distribution: 'adopt'
+          java-version: ${{ inputs.JAVA_VERSION }}
 
       - name: Cache Gradle packages
         uses: actions/cache@v3.3.1

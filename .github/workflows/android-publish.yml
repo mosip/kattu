@@ -80,6 +80,8 @@ on:
         required: true
       SLACK_WEBHOOK_URL:
         required: true
+      GOOGLE_ANDROID_CLIENT_ID:
+        required: true
 
 jobs:
   deploy-android:
@@ -145,6 +147,7 @@ jobs:
           SLACK_WEBHOOK_URL: "${{ secrets.SLACK_WEBHOOK_URL }}"
           BUILD_DESCRIPTION: ${{ inputs.BUILD_DESCRIPTION }}
           APP_FLAVOR: ${{ inputs.APP_FLAVOR }}
+          GOOGLE_ANDROID_CLIENT_ID: ${{secrets.GOOGLE_ANDROID_CLIENT_ID}}
 
       - name: Create Beta build and upload to play console
         if: ${{ inputs.RELEASE == 'beta' }}
@@ -162,6 +165,7 @@ jobs:
           SLACK_WEBHOOK_URL: "${{ secrets.SLACK_WEBHOOK_URL }}"
           BUILD_DESCRIPTION: ${{ inputs.BUILD_DESCRIPTION }}
           APP_FLAVOR: ${{ inputs.APP_FLAVOR }}
+          GOOGLE_ANDROID_CLIENT_ID: ${{secrets.GOOGLE_ANDROID_CLIENT_ID}}
 
       - name: Create Build
         run: |
@@ -175,6 +179,7 @@ jobs:
           RELEASE_KEYSTORE_ALIAS: ${{ inputs.RELEASE_KEYSTORE_ALIAS }}
           RELEASE_KEYSTORE_PASSWORD: "${{secrets.RELEASE_KEYSTORE_PASSWORD}}"
           CREDENTIAL_REGISTRY_EDIT: ${{ inputs.ALLOW_ENV_EDIT }}
+          GOOGLE_ANDROID_CLIENT_ID: ${{secrets.GOOGLE_ANDROID_CLIENT_ID}}
           
       - name: Upload Artifact to Actions
         uses: actions/upload-artifact@v3.1.1

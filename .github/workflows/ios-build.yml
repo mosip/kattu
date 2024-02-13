@@ -41,6 +41,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-npm-
 
+      - name: Install CocoaPods
+        run: |
+          gem uninstall cocoapods -a -x
+          gem install cocoapods -v 1.15.2 --force
+
       - name: Install npm dependencies
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}

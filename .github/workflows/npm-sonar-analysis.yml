@@ -9,6 +9,9 @@ on:
       NODE_VERSION:
         default: '14'
         type: string
+      JAVA_VERSION:
+        default: '17'
+        type: string
       SONAR_URL:
         required: false
         type: string
@@ -61,6 +64,10 @@ jobs:
     - uses: actions/setup-node@v3
       with:
         node-version: ${{ inputs.NODE_VERSION }}
+    - uses: actions/setup-java@v3
+      with:
+        distribution: 'adopt'
+        java-version: ${{ inputs.JAVA_VERSION }}
     - name: Cache npm dependencies
       uses: actions/cache@v2
       with:

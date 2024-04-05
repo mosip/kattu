@@ -59,7 +59,7 @@ jobs:
           CHARTS_MODIFIED=$( git diff --name-status upstream/$BRANCH_NAME | awk -F '/' '/charts/{print $2}' | sort | uniq | sed -E 's/(\S+)/^&$/g' | tr ' ' '|' )
           cd ${{ inputs.CHARTS_DIR }}
           echo "CHARTS_MODIFIED : $CHARTS_MODIFIED "
-          IGNORE_CHART_LIST=$( ls -d * | grep -Ev "$CHARTS_MODIFIED" |  sed ':a;N;$!ba;s/\n/|/g' )
+          IGNORE_CHART_LIST=$( ls -d * | grep -Ev "$CHARTS_MODIFIED"  |  sed ':a;N;$!ba;s/\n/$|^/g' | awk '{print "^"$NF"$"}' )
           echo "IGNORE CHART LIST : $IGNORE_CHART_LIST "
           echo "IGNORE_CHARTS=$(echo $IGNORE_CHART_LIST )" >> $GITHUB_ENV
           echo "CHART_PUBLISH=NO" >> $GITHUB_ENV
@@ -72,7 +72,7 @@ jobs:
           echo "CHARTS_MODIFIED : $CHARTS_MODIFIED"
           IGNORE_CHART_LIST=$( echo "${{ env.IGNORE_CHARTS }}" )
           if [[ ${{ inputs.INCLUDE_ALL_CHARTS  }} == "NO" ]]; then
-             IGNORE_CHART_LIST=$( ls -d * | grep -Ev "$CHARTS_MODIFIED" |  sed ':a;N;$!ba;s/\n/|/g' )
+             IGNORE_CHART_LIST=$( ls -d * | grep -Ev "$CHARTS_MODIFIED" |  sed ':a;N;$!ba;s/\n/$|^/g' | awk '{print "^"$NF"$"}' )
           fi
           echo "IGNORE CHART LIST : $IGNORE_CHART_LIST "
           echo "IGNORE_CHARTS=$(echo $IGNORE_CHART_LIST )" >> $GITHUB_ENV

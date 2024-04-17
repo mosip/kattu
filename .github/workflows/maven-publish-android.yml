@@ -12,11 +12,6 @@ on:
         required: true
         default: "android"
         type: string
-      BUILD_ARTIFACT:
-        description: 'Build artifact'
-        required: true
-        type: string
-        default: 'artifact'
     secrets:
       OSSRH_USER:
         required: true

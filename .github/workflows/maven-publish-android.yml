@@ -1,7 +1,7 @@
 name: Maven build
 
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
       SERVICE_LOCATION:
         description: 'Service location'
@@ -17,25 +17,19 @@ on:
         required: true
         type: string
         default: 'artifact'
+    secrets:
       OSSRH_USER:
-        description: 'OSSRH username'
         required: true
       OSSRH_SECRET:
-        description: 'OSSRH secret'
+        required: true
+      OSSRH_URL:
         required: true
       OSSRH_TOKEN:
-        description: 'OSSRH token'
         required: true
       GPG_SECRET:
-        description: 'GPG secret'
         required: true
       SLACK_WEBHOOK_URL:
-        description: 'Slack webhook URL'
         required: true
-    branches:
-      - release*
-      - master
-      - develop*
 
 jobs:
   maven-android-build:
@@ -54,6 +48,23 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: '16'
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v3.3.1
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle') }}
+          restore-keys: ${{ runner.os }}-gradle-
+
+      - name: Cache npm dependencies
+        uses: actions/cache@v2
+        with:
+          path: '~/.npm'
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
 
       - name: Install npm dependencies
         run: |
@@ -127,6 +138,7 @@ jobs:
         env:
           OSSRH_USERNAME: ${{secrets.OSSRH_USER}}
           OSSRH_PASSWORD: ${{secrets.OSSRH_SECRET}}
+          OSSRH_URL: ${{secrets.OSSRH_URL}}
         if: "${{ !contains(github.ref, 'master') && github.event_name != 'pull_request' &&  github.event_name == 'workflow_dispatch' }}"
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}

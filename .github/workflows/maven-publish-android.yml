@@ -137,7 +137,7 @@ jobs:
         if: "${{ !contains(github.ref, 'master') && github.event_name != 'pull_request' &&  github.event_name == 'workflow_dispatch' }}"
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}
-          ./gradlew publish
+          ./gradlew publish --debug
 
       - name: Publish to Slack
         uses: 8398a7/action-slack@v3

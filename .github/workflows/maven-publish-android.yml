@@ -127,7 +127,7 @@ jobs:
       - name: Build with Gradlew
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}
-          ./gradlew assembleDebug
+          ./gradlew assembleRelease
 
       - name: Publish to Maven Central
         env:

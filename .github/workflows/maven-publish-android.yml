@@ -126,14 +126,13 @@ jobs:
       - name: Build with Gradlew
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}
-          ./gradlew assembleDebug
+          ./gradlew assembleRelease
 
       - name: Publish to Maven Central
         env:
           OSSRH_USER: ${{secrets.OSSRH_USER}}
           OSSRH_SECRET: ${{secrets.OSSRH_SECRET}}
           OSSRH_URL: ${{secrets.OSSRH_URL}}
-        if: "${{ !contains(github.ref, 'master') && github.event_name != 'pull_request' &&  github.event_name == 'workflow_dispatch' }}"
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}
           ./gradlew publish

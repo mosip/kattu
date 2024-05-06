@@ -88,8 +88,9 @@ jobs:
             layer_count=$( grep -Ev '^$' Dockerfile | grep -Ec "$layer" || true);
           
             if [[ $layer_count -ne 1 ]]; then
-              dlayer=$( echo $i | sed -E 's/\\s\+/ /g' | sed -E 's/\\//g' )
-              echo "Docker layer : $dlayer not found; EXITING";
+              dlayer=$( echo $layer | sed -E 's/\\s\+/ /g' | sed -E 's/\\//g' )
+              echo "Docker layer : \"$dlayer\" not found; EXITING";
+              exit 1;
             fi
           done
 

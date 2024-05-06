@@ -59,6 +59,7 @@ jobs:
 
     - name: Install xmlstartlet and xmllint
       run: |
+        sudo rm /etc/apt/sources.list.d/microsoft-prod.list
         sudo apt-get update
         sudo apt-get install xmlstarlet libxml2-utils
 

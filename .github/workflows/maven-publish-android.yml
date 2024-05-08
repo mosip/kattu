@@ -119,7 +119,7 @@ jobs:
 
       - name: Validate pom.xml & settings.xml via xmllint
         run: |
-          find ${{ inputs.SERVICE_LOCATION }}/android/build/publications/aar -type f -name pom-default.xml | while read -r F; do
+          find ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}/build/publications/aar -type f -name pom-default.xml | while read -r F; do
             xmllint --xpath '/*[local-name()="project"]/*[local-name()="version"]' $F
           done
 

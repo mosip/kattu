@@ -29,7 +29,10 @@ jobs:
       - name: Start Docker service
         run: sudo service docker start
       - name: Install Docker Python SDK
-        run: pip install docker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-pip
+          python3 -m pip install docker
       - name: update config.yml
         run: |
           cd release/vidivi

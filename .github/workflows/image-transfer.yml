@@ -37,8 +37,8 @@ jobs:
           cd release/vidivi
           sudo apt-get update
           sudo apt-get install -y python3-pip
-          sudo python3 -m pip install docker
-          sudo python3 -m pip show docker  # Verify installation
+          python3 -m pip install docker
+          python3 -m pip show docker  # Verify installation
           sudo python3 vidivi.py push
 
       - uses: 8398a7/action-slack@v3

@@ -28,15 +28,17 @@ jobs:
         run: |
           cd release/vidivi
           echo "PWD: $( pwd )"
-          echo "LS : $( ls ) "
+          echo "LS : $( ls )"
           sed -i "s/username:.*/username: ${{ secrets.USERNAME }}/g" config.yml
           sed -i "s/token:.*/token: ${{ secrets.TOKEN }}/g" config.yml
           sed -i "s/destination_organization.*/destination_organization: ${{ github.event.inputs.DESTINATION_ORGANIZATION }}/g" config.yml
       - name: push images
         run: |
           cd release/vidivi
-          sudo pip install python-pip
-          sudo pip install docker
+          sudo apt-get update
+          sudo apt-get install -y python3-pip
+          python3 -m pip install docker
+          python3 -m pip show docker  # Verify installation
           sudo python3 vidivi.py push
 
       - uses: 8398a7/action-slack@v3

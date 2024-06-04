@@ -24,6 +24,10 @@ on:
         description: "Edit Registry"
         required: true
         type: string
+      LIVENESS_DETECTION:
+        description: "Detect Liveness"
+        required: true
+        type: string
       TESTFLIGHT_INTERNAL_TESTERS_GROUP:
         description: "Internal Testers Group"
         required: true
@@ -155,6 +159,7 @@ jobs:
           ESIGNET_HOST: ${{ inputs.ESIGNET_HOST }}
           APPLICATION_THEME: ${{ inputs.APPLICATION_THEME }}
           CREDENTIAL_REGISTRY_EDIT: ${{ inputs.ALLOW_ENV_EDIT }}
+          LIVENESS_DETECTION: ${{ inputs.LIVENESS_DETECTION }}
           TESTFLIGHT_INTERNAL_TESTERS_GROUP: ${{ inputs.TESTFLIGHT_INTERNAL_TESTERS_GROUP }}
           TESTFLIGHT_BETA_APP_DESCRIPTION: ${{ inputs.TESTFLIGHT_BETA_APP_DESCRIPTION }}
 

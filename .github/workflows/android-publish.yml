@@ -36,6 +36,10 @@ on:
         description: "Edit ENV"
         required: true
         type: string
+      LIVENESS_DETECTION:
+        description: "Detect Liveness"
+        required: true
+        type: string
       ANDROID_ARTIFACT_NAME:
         description: "Android Artifact name"
         required: true
@@ -144,6 +148,7 @@ jobs:
           RELEASE_KEYSTORE_ALIAS: ${{ inputs.RELEASE_KEYSTORE_ALIAS }}
           RELEASE_KEYSTORE_PASSWORD: "${{secrets.RELEASE_KEYSTORE_PASSWORD}}"
           CREDENTIAL_REGISTRY_EDIT: ${{ inputs.ALLOW_ENV_EDIT }}
+          LIVENESS_DETECTION: ${{ inputs.LIVENESS_DETECTION }}
           SLACK_WEBHOOK_URL: "${{ secrets.SLACK_WEBHOOK_URL }}"
           BUILD_DESCRIPTION: ${{ inputs.BUILD_DESCRIPTION }}
           APP_FLAVOR: ${{ inputs.APP_FLAVOR }}
@@ -162,6 +167,7 @@ jobs:
           RELEASE_KEYSTORE_ALIAS: ${{ inputs.RELEASE_KEYSTORE_ALIAS }}
           RELEASE_KEYSTORE_PASSWORD: "${{secrets.RELEASE_KEYSTORE_PASSWORD}}"
           CREDENTIAL_REGISTRY_EDIT: ${{ inputs.ALLOW_ENV_EDIT }}
+          LIVENESS_DETECTION: ${{ inputs.LIVENESS_DETECTION }}
           SLACK_WEBHOOK_URL: "${{ secrets.SLACK_WEBHOOK_URL }}"
           BUILD_DESCRIPTION: ${{ inputs.BUILD_DESCRIPTION }}
           APP_FLAVOR: ${{ inputs.APP_FLAVOR }}
@@ -179,6 +185,7 @@ jobs:
           RELEASE_KEYSTORE_ALIAS: ${{ inputs.RELEASE_KEYSTORE_ALIAS }}
           RELEASE_KEYSTORE_PASSWORD: "${{secrets.RELEASE_KEYSTORE_PASSWORD}}"
           CREDENTIAL_REGISTRY_EDIT: ${{ inputs.ALLOW_ENV_EDIT }}
+          LIVENESS_DETECTION: ${{ inputs.LIVENESS_DETECTION }}
           GOOGLE_ANDROID_CLIENT_ID: ${{secrets.GOOGLE_ANDROID_CLIENT_ID}}
           
       - name: Upload Artifact to Actions

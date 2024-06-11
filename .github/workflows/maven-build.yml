@@ -81,6 +81,7 @@ jobs:
     - name: Validate pom.xml & settings.xml via xmllint
       run: |
         find ${{ inputs.SERVICE_LOCATION }} -type f -name pom.xml | while read -r F; do
+          echo "Pom file : $F"
           xmllint --xpath '/*[local-name()="project"]/*[local-name()="version"]' $F
         done
 

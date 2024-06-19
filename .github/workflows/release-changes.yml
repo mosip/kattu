@@ -88,7 +88,7 @@ jobs:
             output=$(mvn help:evaluate -Dexpression=$version -f $pomfile --quiet | grep -v "^\[")
           
             if [[ $output == *"ERROR"* ]]; then
-              echo "VERSION $version not found in $pomfile"; EXITING"
+              echo "VERSION $version not found in $pomfile; EXITING"
               exit 1
             elif [[ $output == *"-SNAPSHOT"* ]]; then
               echo "Adding VERSION $version to snapshot_dependencies list"

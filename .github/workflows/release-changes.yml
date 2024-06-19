@@ -85,7 +85,7 @@ jobs:
             local version=$1
             local pomfile=$2
           
-            output=$(mvn help:evaluate -Dexpression=$version -f $pomfile --quiet | grep -v "^\[")
+            output=$(mvn help:evaluate -Dexpression=$version -f $pomfile -N --quiet | grep -v "^\[")
           
             if [[ $output == *"ERROR"* ]]; then
               echo "VERSION $version not found in $pomfile; EXITING"

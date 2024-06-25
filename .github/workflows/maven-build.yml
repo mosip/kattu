@@ -73,7 +73,77 @@ jobs:
       run: cd ${{ inputs.SERVICE_LOCATION }} && xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:developers[1]/s:developer/s:name" -nl pom.xml | grep -icq "Mosip"
 
     - name: Build check for commit plugin
-      run: cd ${{ inputs.SERVICE_LOCATION }} && xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:build/s:plugins/s:plugin[s:groupId='pl.project13.maven']/s:artifactId" -nl pom.xml | grep -q "git-commit-id-plugin"
+      run: |
+        cd ${{ inputs.SERVICE_LOCATION }}
+        
+        namespace="http://maven.apache.org/POM/4.0.0"
+        xpath_query="//s:project/s:build/s:plugins/s:plugin[s:groupId='pl.project13.maven'][s:artifactId='git-commit-id-plugin']/s:configuration[s:generateGitPropertiesFile='true'][s:generateGitPropertiesFilename='\${project.build.outputDirectory}/service-git.properties']"
+        
+        # Initialize error count
+        error_count=0
+        
+        # Print namespace and xpath_query for debugging
+        echo "Namespace: ${namespace}"
+        echo "XPath Query: ${xpath_query}"
+        
+        # Function to check a single pom.xml file
+        check_pom() {
+          local pom_file=$1
+          if [ ! -f "$pom_file" ]; then
+            echo "$pom_file file not found!"
+            error_count=$((error_count + 1))
+            return
+          fi
+        
+          output=$(xmlstarlet sel -N s="${namespace}" -t -v "${xpath_query}" -nl "$pom_file")
+          
+          if [[ $? -ne 0 || -z "$output" ]]; then
+            echo "Error : required commit-id-plugin or configuration not found in $pom_file."
+            error_count=$((error_count + 1))
+          fi
+        }
+        
+        # Check the main pom.xml file
+        check_pom "pom.xml"
+        
+        # Get the list of modules from the main pom.xml file
+        modules=$(xmlstarlet sel -N s="${namespace}" -t -v "//s:project/s:modules/s:module" pom.xml)
+        
+        # Iterate over each module and check the pom.xml file
+        for module in $modules; do
+          echo "module - $module"
+          check_pom "$module/pom.xml"
+        done
+        
+        if [[ $error_count -gt 0 ]]; then
+          echo "Correct commit-id-plugin value is as shown below"
+          echo "<plugin>
+                    <groupId>pl.project13.maven</groupId>
+                    <artifactId>git-commit-id-plugin</artifactId>
+                    <version>3.0.1</version>
+                    <executions>
+                        <execution>
+                            <id>get-the-git-infos</id>
+                            <goals>
+                                <goal>revision</goal>
+                            </goals>
+                            <phase>validate</phase>
+                        </execution>
+                    </executions>
+                    <configuration>
+                        <generateGitPropertiesFile>true</generateGitPropertiesFile>
+                        <generateGitPropertiesFilename>\${project.build.outputDirectory}/service-git.properties</generateGitPropertiesFilename>
+                        <includeOnlyProperties>
+                            <includeOnlyProperty>^git.build.(time|version)$</includeOnlyProperty>
+                            <includeOnlyProperty>^git.commit.id.(abbrev|full)$</includeOnlyProperty>
+                        </includeOnlyProperties>
+                        <commitIdGenerationMode>full</commitIdGenerationMode>
+                        <dotGitDirectory>\${project.basedir}/.git</dotGitDirectory>
+                        <format>json</format>
+                    </configuration>
+                </plugin>"
+          exit 1
+        fi
 
     - name: Build check for sign plugin
       run: cd ${{ inputs.SERVICE_LOCATION }} && xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:build/s:plugins/s:plugin[s:groupId='org.apache.maven.plugins']/s:artifactId" -nl pom.xml | grep -q "maven-gpg-plugin"

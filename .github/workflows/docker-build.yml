@@ -21,6 +21,10 @@ on:
         required: false
         type: boolean
         default: false
+      BASE_IMAGE_BUILD:
+        required: false
+        type: boolean
+        default: false
 
     secrets:
       RELEASE_DOCKER_HUB:
@@ -95,6 +99,7 @@ jobs:
               fi
             done
           done
+        if: ${{ inputs.BASE_IMAGE_BUILD == false }}
 
       - name: Check Dockerfile for 'mosip' user definition
         run: |
@@ -110,6 +115,7 @@ jobs:
               fi
             done
           done
+        if: ${{ inputs.BASE_IMAGE_BUILD == false }}
 
       - name: Build check for Docker label
         run: |
@@ -123,11 +129,16 @@ jobs:
               exit 1;
             fi
           done
+        if: ${{ inputs.BASE_IMAGE_BUILD == false }}
 
       - name: Build image
         run: |
+          if [[ ${{ inputs.BASE_IMAGE_BUILD }} == false ]]; then
+            DOCKER_LABEL=$( echo "--build-arg COMMIT_HASH=$(git rev-parse HEAD) --build-arg COMMIT_ID=$(git rev-parse --short HEAD) --build-arg BUILD_TIME=$BUILD_TIME" )
+          fi
+          echo "DOCKER_LABEL = $DOCKER_LABEL "
           cd ${{ inputs.SERVICE_LOCATION }}
-          docker build . --build-arg SOURCE=mosip --build-arg COMMIT_HASH=$(git rev-parse HEAD) --build-arg COMMIT_ID=$(git rev-parse --short HEAD) --build-arg BUILD_TIME=$BUILD_TIME --file Dockerfile --tag ${{ env.SERVICE_NAME }}
+          docker build . --build-arg SOURCE=mosip --file Dockerfile $DOCKER_LABEL --tag ${{ env.SERVICE_NAME }}
 
       - name: Log into registry
         if: "${{ github.event_name != 'pull_request' }}"

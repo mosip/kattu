@@ -41,6 +41,15 @@ jobs:
           python3 -m pip show docker  # Verify installation
           sudo python3 vidivi.py push
 
+      - name: commit and push vidivi log
+        run: |
+          cd release/vidivi/logs/
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add .
+          git commit -m "added vidivi log files"
+          git push  
+
       - uses: 8398a7/action-slack@v3
         with:
           status: ${{ job.status }}

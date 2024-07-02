@@ -85,10 +85,10 @@ jobs:
             local version=$1
             local pomfile=$2
           
-            output=$(mvn help:evaluate -Dexpression=$version -f $pomfile | grep -vE "INFO|WARNING")
+            output=$(mvn help:evaluate -Dexpression=$version -f $pomfile | grep -v "^\[")
           
             if [[ $output == *"ERROR"* ]]; then
-              echo "VERSION $version not found; EXITING"
+              echo "VERSION $version not found in $pomfile; EXITING"
               exit 1
             elif [[ $output == *"-SNAPSHOT"* ]]; then
               echo "Adding VERSION $version to snapshot_dependencies list"
@@ -113,6 +113,8 @@ jobs:
           if [[ ${#snapshot_dependencies[@]} -gt 0 ]]; then
             echo -e "Snapshot dependencies found: ${snapshot_dependencies[*]}"
             exit 1
+          else
+            echo "No SNAPSHOT dependencies found."
           fi
 
       - name: Create Pull Request

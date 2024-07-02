@@ -87,40 +87,50 @@ jobs:
 
       - name: Check Dockerfile for 'mosip' user definition
         run: |
-          DOCKERFILES=$(git ls-files | grep Dockerfile | grep -w "Dockerfile")
+          cd ${{ inputs.SERVICE_LOCATION }}
+          DOCKERFILES=$(git ls-files | grep -w "Dockerfile")
+
+          chk_layer=(
+            "ARG\s+container_user=mosip"
+            "ARG\s+container_user_group=mosip"
+            "ARG\s+container_user_uid=1001"
+            "ARG\s+container_user_gid=1001"
+            "ENV\s+container_user=${container_user}
+            "ENV\s+container_user_group=\\\${container_user_group}
+            "ENV\s+container_user_uid=\\\${container_user_uid}
+            "ENV\s+container_user_gid=\\\${container_user_gid}
+            "WORKDIR\s+/home/\\\${container_user}"
+            "chown\s+-R\s+\\\${container_user}:\\\${container_user}\s+/home/\\\${container_user}"
+            "USER\s+\\\${container_user_uid}:\\\${container_user_gid}"
+          )
+
           for FILE in $DOCKERFILES; do
-            for layer in "ARG\s+container_user=mosip" "ARG\s+container_user_group=mosip" "ARG\s+container_user_uid=1001" "ARG\s+container_user_gid=1001" "WORKDIR\s+/home/\\$\{container\_user\}" "RUN\s+chown\s+\-R\s+\\$\{container\_user\}\:\\$\{container\_user\}\s+\/home\/\\$\{container\_user\}" "USER\s+\\$\{container\_user\_uid\}\:\\$\{container\_user\_gid\}"; do
+            for layer in "${chk_layer[@]}"; do
               layer_count=$(grep -Ev '^$' "$FILE" | grep -Ec "$layer" || true)
           
               if [[ $layer_count -ne 1 ]]; then
                 dlayer=$(echo $layer | sed -E 's/\\s\+/ /g' | sed -E 's/\\//g')
-                echo "Docker layer: $dlayer not found in $FILE; EXITING"
+                echo "Docker layer: \"$dlayer\" not found in $FILE; EXITING"
                 exit 1
               fi
             done
           done
         if: ${{ inputs.BASE_IMAGE_BUILD == false }}
 
-      - name: Check Dockerfile for 'mosip' user definition
-        run: |
-          DOCKERFILES=$(git ls-files | grep Dockerfile | grep -w "Dockerfile")
-          for FILE in $DOCKERFILES; do
-            for layer in "ARG\s+container_user=mosip" "ARG\s+container_user_group=mosip" "ARG\s+container_user_uid=1001" "ARG\s+container_user_gid=1001" "WORKDIR\s+/home/\\$\{container\_user\}" "chown\s+\-R\s+\\$\{container\_user\}\:\\$\{container\_user\}\s+\/home\/\\$\{container\_user\}" "USER\s+\\$\{container\_user\_uid\}\:\\$\{container\_user\_gid\}"; do
-              layer_count=$(grep -Ev '^$' "$FILE" | grep -Ec "$layer" || true)
-          
-              if [[ $layer_count -ne 1 ]]; then
-                dlayer=$(echo $layer | sed -E 's/\\s\+/ /g' | sed -E 's/\\//g')
-                echo "Docker layer: $dlayer not found in $FILE; EXITING"
-                exit 1
-              fi
-            done
-          done
-        if: ${{ inputs.BASE_IMAGE_BUILD == false }}
-
-      - name: Build check for Docker label
+      - name: Build check for Docker datetime & git commit labels
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}
-          for layer in  ARG\\s+SOURCE ARG\\s+COMMIT_HASH ARG\\s+COMMIT_ID ARG\\s+BUILD_TIME LABEL\\s+source=\\$\\{SOURCE\\} LABEL\\s+commit_hash=\\$\\{COMMIT_HASH\\} LABEL\\s+commit_id=\\$\\{COMMIT_ID\\} LABEL\\s+build_time=\\$\\{BUILD_TIME\\}; do
+           chk_layer=( "ARG\\s+SOURCE"
+                       "ARG\\s+COMMIT_HASH"
+                       "ARG\\s+COMMIT_ID"
+                       "ARG\\s+BUILD_TIME"
+                       "LABEL\\s+source=\\\${SOURCE}"
+                       "LABEL\\s+commit_hash=\\\${COMMIT_HASH}"
+                       "LABEL\\s+commit_id=\\\${COMMIT_ID}" 
+                       "LABEL\\s+build_time=\\\${BUILD_TIME}"
+          )
+          
+          for layer in "${chk_layer[@]}"; do
             layer_count=$( grep -Ev '^$' Dockerfile | grep -Ec "$layer" || true);
           
             if [[ $layer_count -ne 1 ]]; then

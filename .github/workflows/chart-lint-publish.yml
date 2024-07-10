@@ -36,6 +36,9 @@ on:
       INCLUDE_ALL_CHARTS:
         required: true
         type: string
+      DEPENDENCIES:
+        required: false
+        type: string
     secrets:
       TOKEN:
         required: true
@@ -92,6 +95,7 @@ jobs:
           linting_lintconf_yaml_url: "${{ inputs.LINTING_LINTCONF_YAML_URL }}"
           linting_chart_testing_config_yaml_url: "${{ inputs.LINTING_CHART_TESTING_CONFIG_YAML_URL }}"
           linting_health_check_schema_yaml_url: "${{ inputs.LINTING_HEALTH_CHECK_SCHEMA_YAML_URL }}"
+          dependencies: "${{ inputs.DEPENDENCIES }}"
 
 
       # Commented below tasks as it cannot test MOSIP helm/charts deployment due to dependencies issues

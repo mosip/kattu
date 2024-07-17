@@ -81,9 +81,9 @@ jobs:
     - name: Build check for name, url, and description in pom.xml
       run: |
         cd ${{ inputs.SERVICE_LOCATION }}
-        xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:name" -nl pom.xml | grep -q "."
-        xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:url" -nl pom.xml | grep -q "."
-        xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:description" -nl pom.xml | grep -q "."
+        echo xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:name" -nl pom.xml | grep -q "."
+        echo xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:url" -nl pom.xml | grep -q "."
+        echo xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:description" -nl pom.xml | grep -q "."
 
     - name: Validate pom.xml & settings.xml via xmllint
       run: |

@@ -131,7 +131,7 @@ jobs:
     - name: run sonar analysis
       run: |
         cd "./${{inputs.SERVICE_LOCATION}}"     
-        npm install sonar-scanner && npm run sonar -- -Dsonar.token=${{ secrets.SONAR_TOKEN1 }} -Dsonar.organization=${{ env.ORG_KEY }} ${{ inputs.SONAR_ARGS }}
+        npm install sonar-scanner && npm run sonar -- -Dsonar.token=${{ secrets.SONAR_TOKEN }} -Dsonar.organization=${{ env.ORG_KEY }} ${{ inputs.SONAR_ARGS }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

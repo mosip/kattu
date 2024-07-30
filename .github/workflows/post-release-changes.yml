@@ -1,13 +1,14 @@
 name: Post-Release Preparation
 
 on:
-  workflow_call:
+  workflow_dispatch:
     inputs:
       REPO_URL:
-        description: '<github-account-name>/<repo-name>'
+        description: 'Repo URL (EX. mosip/<repo name>)'
         required: true
         type: string
       REPO_BRANCH:
+        description: 'Repo Branch'
         required: true
         type: string
       BASE:
@@ -37,59 +38,19 @@ on:
         description: 'Version to update to in POMs'
         required: false
         type: string
-    secrets:
-      SLACK_WEBHOOK_URL:
-        required: true
-      ACTION_PAT:
-        required: true
 
 jobs:
   maven-post-release-preparation:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          repository: ${{ inputs.REPO_URL }}
-          ref: ${{ inputs.REPO_BRANCH }}
-      - name: Setup branch and env
-        run: |
-          # Strip git ref prefix from version
-          echo "BRANCH_NAME=$(echo ${{ github.ref }} | sed -e 's,.*/\(.*\),\1,')" >> $GITHUB_ENV
-          echo "GPG_TTY=$(tty)" >> $GITHUB_ENV
-
-      - name: Conditional Maven URL Update
-        run: |
-          cd .github/workflows
-          if [ "${{ inputs.UPDATE_RELEASE_URL }}" = "true" ]; then
-            sed -i 's/OSSRH_SNAPSHOT_URL/RELEASE_URL/g' *push-trigger.yml
-          elif [ "${{ inputs.UPDATE_SNAPSHOT_URL }}" = "true" ]; then
-            sed -i 's/RELEASE_URL/OSSRH_SNAPSHOT_URL/g' *push-trigger.yml
-          fi
-
-      - name: Conditional POM Version Update
-        if: inputs.UPDATE_POM_VERSION == 'true'
-        run: |
-          if [ -z "${{ inputs.FROM_VERSION }}" ] || [ -z "${{ inputs.TO_VERSION }}" ]; then
-            echo "FROM_VERSION and TO_VERSION must be provided when UPDATE_POM_VERSION is true."
-            exit 1
-          fi
-          find . -type f -name "pom.xml" -exec sed -i "s/${{ inputs.FROM_VERSION }}/${{ inputs.TO_VERSION }}/g" {} +
-
-      - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v5.0.2
-        with:
-          commit-message: Updated Pom versions for release changes
-          title: Post release changes
-          branch: release-branch
-          delete-branch: true
-          base: ${{ inputs.BASE }}
-          token: ${{ secrets.ACTION_PAT }}
-          signoff: true
-
-      - uses: 8398a7/action-slack@v3
-        with:
-          status: ${{ job.status }}
-          fields: repo,message,author,commit,workflow,job # selectable (default: repo,message)
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} # required
-        if: failure() # Pick up events even if the job fails or is canceled.
+    uses: Prafulrakhade/kattu/.github/workflows/post-release-changes.yml@master
+    with:
+      REPO_URL: ${{ inputs.REPO_URL }}
+      REPO_BRANCH: ${{ inputs.REPO_BRANCH }}
+      BASE: ${{ inputs.BASE }}
+      UPDATE_RELEASE_URL: ${{ inputs.UPDATE_RELEASE_URL }}
+      UPDATE_SNAPSHOT_URL: ${{ inputs.UPDATE_SNAPSHOT_URL }}
+      UPDATE_POM_VERSION: ${{ inputs.UPDATE_POM_VERSION }}
+      FROM_VERSION: ${{ inputs.FROM_VERSION }}
+      TO_VERSION: ${{ inputs.TO_VERSION }}
+    secrets:
+      ACTION_PAT: ${{ secrets.ACTION_PAT }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_MOSIP_WEBHOOK_URL }}

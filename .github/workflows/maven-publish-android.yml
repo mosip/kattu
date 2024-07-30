@@ -123,6 +123,9 @@ jobs:
       - name: Build check for sign plugin
         run: cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }} && xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:build/s:plugins/s:plugin[s:groupId='org.apache.maven.plugins']/s:artifactId" -nl build/publications/aar/pom-default.xml | grep -q "maven-gpg-plugin"
 
+      - name: Log pom.xml
+        run: cat ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}/build/publications/aar/pom-default.xml
+
       - name: Validate pom.xml & settings.xml via xmllint
         run: |
           find ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}/build/publications/aar -type f -name pom-default.xml | while read -r F; do

@@ -89,7 +89,6 @@ jobs:
             echo "FROM_VERSION and TO_VERSION must be provided when UPDATE_POM_VERSION is true."
             exit 1
           fi
-          echo "Updating POM versions from ${{ inputs.FROM_VERSION }} to ${{ inputs.TO_VERSION }}"
           find . -type f -name "pom.xml" -exec sed -i "s/${{ inputs.FROM_VERSION }}/${{ inputs.TO_VERSION }}/g" {} +
 
       - name: Create Pull Request

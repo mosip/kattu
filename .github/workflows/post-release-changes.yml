@@ -51,11 +51,20 @@ jobs:
         with:
           repository: ${{ inputs.REPO_URL }}
           ref: ${{ inputs.REPO_BRANCH }}
+
       - name: Setup branch and env
         run: |
           # Strip git ref prefix from version
           echo "BRANCH_NAME=$(echo ${{ github.ref }} | sed -e 's,.*/\(.*\),\1,')" >> $GITHUB_ENV
           echo "GPG_TTY=$(tty)" >> $GITHUB_ENV
+
+      - name: Debug Inputs
+        run: |
+          echo "UPDATE_RELEASE_URL: ${{ inputs.UPDATE_RELEASE_URL }}"
+          echo "UPDATE_SNAPSHOT_URL: ${{ inputs.UPDATE_SNAPSHOT_URL }}"
+          echo "UPDATE_POM_VERSION: ${{ inputs.UPDATE_POM_VERSION }}"
+          echo "FROM_VERSION: ${{ inputs.FROM_VERSION }}"
+          echo "TO_VERSION: ${{ inputs.TO_VERSION }}"
 
       - name: Conditional Maven URL Update
         run: |
@@ -67,12 +76,13 @@ jobs:
           fi
 
       - name: Conditional POM Version Update
-        if: inputs.UPDATE_POM_VERSION == 'true'
+        if: ${{ inputs.UPDATE_POM_VERSION }}
         run: |
           if [ -z "${{ inputs.FROM_VERSION }}" ] || [ -z "${{ inputs.TO_VERSION }}" ]; then
             echo "FROM_VERSION and TO_VERSION must be provided when UPDATE_POM_VERSION is true."
             exit 1
           fi
+          echo "Updating POM versions from ${FROM_VERSION} to ${TO_VERSION}"
           find . -type f -name "pom.xml" -exec sed -i "s/${{ inputs.FROM_VERSION }}/${{ inputs.TO_VERSION }}/g" {} +
 
       - name: Create Pull Request

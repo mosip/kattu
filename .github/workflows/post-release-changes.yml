@@ -24,6 +24,19 @@ on:
         required: false
         type: boolean
         default: false
+      UPDATE_POM_VERSION:
+        description: 'Set to true to update POM versions'
+        required: false
+        type: boolean
+        default: false
+      FROM_VERSION:
+        description: 'Version to be replaced in POMs'
+        required: false
+        type: string
+      TO_VERSION:
+        description: 'Version to update to in POMs'
+        required: false
+        type: string
     secrets:
       SLACK_WEBHOOK_URL:
         required: true
@@ -52,6 +65,15 @@ jobs:
           elif [ "${{ inputs.UPDATE_SNAPSHOT_URL }}" = "true" ]; then
             sed -i 's/RELEASE_URL/OSSRH_SNAPSHOT_URL/g' *push-trigger.yml
           fi
+
+      - name: Conditional POM Version Update
+        if: inputs.UPDATE_POM_VERSION == 'true'
+        run: |
+          if [ -z "${{ inputs.FROM_VERSION }}" ] || [ -z "${{ inputs.TO_VERSION }}" ]; then
+            echo "FROM_VERSION and TO_VERSION must be provided when UPDATE_POM_VERSION is true."
+            exit 1
+          fi
+          find . -type f -name "pom.xml" -exec sed -i "s/${{ inputs.FROM_VERSION }}/${{ inputs.TO_VERSION }}/g" {} +
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v5.0.2

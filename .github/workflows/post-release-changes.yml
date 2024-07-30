@@ -70,10 +70,10 @@ jobs:
         if: inputs.UPDATE_POM_VERSION == 'true'
         run: |
           if [ -z "${{ inputs.FROM_VERSION }}" ] || [ -z "${{ inputs.TO_VERSION }}" ]; then
-            find . -type f -name "pom.xml" -exec sed -i "s/${{ inputs.FROM_VERSION }}/${{ inputs.TO_VERSION }}/g" {} +
+            echo "FROM_VERSION and TO_VERSION must be provided when UPDATE_POM_VERSION is true."
             exit 1
           fi
-          echo "FROM_VERSION and TO_VERSION must be provided when UPDATE_POM_VERSION is true."
+          find . -type f -name "pom.xml" -exec sed -i "s/${{ inputs.FROM_VERSION }}/${{ inputs.TO_VERSION }}/g" {} +
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v5.0.2

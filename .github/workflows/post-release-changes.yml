@@ -97,9 +97,9 @@ jobs:
         with:
           commit-message: Updated Pom versions for release changes
           title: Post release changes
-          branch: release-branch
+          branch: releas-branch
           delete-branch: true
-          base: ${{ inputs.BASE }}
+          base: ${{ github.event.inputs.BASE }}
           token: ${{ secrets.ACTION_PAT }}
           signoff: true
 

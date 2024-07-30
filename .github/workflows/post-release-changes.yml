@@ -1,4 +1,4 @@
-name: Post-Release Preparation.
+name: Post-Release Preparation
 
 on:
   workflow_call:
@@ -14,6 +14,29 @@ on:
         description: 'base branch for PR'
         required: true
         type: string
+      UPDATE_RELEASE_URL:
+        description: 'Set to true to update Maven publish URL to RELEASE_URL'
+        required: false
+        type: boolean
+        default: false
+      UPDATE_SNAPSHOT_URL:
+        description: 'Set to true to update Maven publish URL to OSSRH_SNAPSHOT_URL'
+        required: false
+        type: boolean
+        default: false
+      UPDATE_POM_VERSION:
+        description: 'Set to true to update POM versions'
+        required: false
+        type: boolean
+        default: false
+      FROM_VERSION:
+        description: 'Version to be replaced in POMs'
+        required: false
+        type: string
+      TO_VERSION:
+        description: 'Version to update to in POMs'
+        required: false
+        type: string
     secrets:
       SLACK_WEBHOOK_URL:
         required: true
@@ -28,16 +51,46 @@ jobs:
         with:
           repository: ${{ inputs.REPO_URL }}
           ref: ${{ inputs.REPO_BRANCH }}
+
       - name: Setup branch and env
         run: |
           # Strip git ref prefix from version
           echo "BRANCH_NAME=$(echo ${{ github.ref }} | sed -e 's,.*/\(.*\),\1,')" >> $GITHUB_ENV
           echo "GPG_TTY=$(tty)" >> $GITHUB_ENV
 
-      - name: Updating the OSSRH_SNAPSHOT_URL in push-trigger
+      - name: Debug Inputs
+        run: |
+          echo "UPDATE_RELEASE_URL: ${{ inputs.UPDATE_RELEASE_URL }}"
+          echo "UPDATE_SNAPSHOT_URL: ${{ inputs.UPDATE_SNAPSHOT_URL }}"
+          echo "UPDATE_POM_VERSION: ${{ inputs.UPDATE_POM_VERSION }}"
+          echo "FROM_VERSION: ${{ inputs.FROM_VERSION }}"
+          echo "TO_VERSION: ${{ inputs.TO_VERSION }}"
+
+      - name: Check for Conflicting Updates
+        run: |
+          if [ "${{ inputs.UPDATE_RELEASE_URL }}" = "true" ] && [ "${{ inputs.UPDATE_SNAPSHOT_URL }}" = "true" ]; then
+            echo "ERROR: Both UPDATE_RELEASE_URL and UPDATE_SNAPSHOT_URL cannot be true simultaneously."
+            exit 1
+          fi
+
+      - name: Conditional Maven URL Update
         run: |
           cd .github/workflows
-          sed -i 's/RELEASE_URL/OSSRH_SNAPSHOT_URL/g' *push-trigger.yml
+          if [ "${{ inputs.UPDATE_RELEASE_URL }}" = "true" ]; then
+            sed -i 's/OSSRH_SNAPSHOT_URL/RELEASE_URL/g' *push-trigger.yml
+          elif [ "${{ inputs.UPDATE_SNAPSHOT_URL }}" = "true" ]; then
+            sed -i 's/RELEASE_URL/OSSRH_SNAPSHOT_URL/g' *push-trigger.yml
+          fi
+
+      - name: Conditional POM Version Update
+        if: ${{ inputs.UPDATE_POM_VERSION }}
+        run: |
+          if [ -z "${{ inputs.FROM_VERSION }}" ] || [ -z "${{ inputs.TO_VERSION }}" ]; then
+            echo "ERROR: FROM_VERSION and TO_VERSION must be provided when UPDATE_POM_VERSION is true."
+            exit 1
+          fi
+          echo "Updating POM versions from ${{ inputs.FROM_VERSION }} to ${{ inputs.TO_VERSION }}"
+          find . -type f -name "pom.xml" -exec sed -i "s/${{ inputs.FROM_VERSION }}/${{ inputs.TO_VERSION }}/g" {} +
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v5.0.2

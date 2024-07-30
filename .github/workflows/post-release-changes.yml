@@ -1,4 +1,4 @@
-name: Post-Release Preparation.
+name: Post-Release Preparation
 
 on:
   workflow_call:
@@ -14,6 +14,16 @@ on:
         description: 'base branch for PR'
         required: true
         type: string
+      UPDATE_RELEASE_URL:
+        description: 'Set to true to update Maven publish URL to RELEASE_URL'
+        required: false
+        type: boolean
+        default: false
+      UPDATE_SNAPSHOT_URL:
+        description: 'Set to true to update Maven publish URL to OSSRH_SNAPSHOT_URL'
+        required: false
+        type: boolean
+        default: false
     secrets:
       SLACK_WEBHOOK_URL:
         required: true
@@ -34,19 +44,23 @@ jobs:
           echo "BRANCH_NAME=$(echo ${{ github.ref }} | sed -e 's,.*/\(.*\),\1,')" >> $GITHUB_ENV
           echo "GPG_TTY=$(tty)" >> $GITHUB_ENV
 
-      - name: Updating the OSSRH_SNAPSHOT_URL in push-trigger
+      - name: Conditional Maven URL Update
         run: |
           cd .github/workflows
-          sed -i 's/RELEASE_URL/OSSRH_SNAPSHOT_URL/g' *push-trigger.yml
+          if [ "${{ inputs.UPDATE_RELEASE_URL }}" = "true" ]; then
+            sed -i 's/OSSRH_SNAPSHOT_URL/RELEASE_URL/g' *push-trigger.yml
+          elif [ "${{ inputs.UPDATE_SNAPSHOT_URL }}" = "true" ]; then
+            sed -i 's/RELEASE_URL/OSSRH_SNAPSHOT_URL/g' *push-trigger.yml
+          fi
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v5.0.2
         with:
           commit-message: Updated Pom versions for release changes
           title: Post release changes
-          branch: releas-branch
+          branch: release-branch
           delete-branch: true
-          base: ${{ github.event.inputs.BASE }}
+          base: ${{ inputs.BASE }}
           token: ${{ secrets.ACTION_PAT }}
           signoff: true
 

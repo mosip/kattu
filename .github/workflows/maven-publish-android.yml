@@ -94,8 +94,14 @@ jobs:
           sudo apt-get --yes install gnupg2
           gpg2 --import ./.github/keys/mosipgpgkey_pub.gpg
           KEY_ID=$(gpg --list-secret-keys --keyid-format LONG | grep sec | awk '{print $2}' | awk -F'/' '{print $2}')
+          echo "Extracted KEY_ID=$KEY_ID"
           echo "KEY_ID=$KEY_ID" >> $GITHUB_ENV
           gpg2 --quiet --batch --passphrase=${{secrets.GPG_SECRET}}  --allow-secret-key-import --import ./.github/keys/mosipgpgkey_sec.gpg
+          
+      - name: Debug environment variables
+        run: |
+          echo "KEY_ID=${{ env.KEY_ID }}"
+          echo "GPG_TTY=${{ env.GPG_TTY }}"
 
       - name: Install xmlstartlet and xmllint
         run: |

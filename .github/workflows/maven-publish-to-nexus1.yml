@@ -65,7 +65,7 @@ jobs:
 
     - name: Publish the maven package
       run: |
-        cd ${{ inputs.SERVICE_LOCATION }} && mvn -DskipTests -X -U -B deploy -Dmaven.wagon.http.retryHandler.count=2 -DaltDeploymentRepository=ossrh::default::${{ secrets.OSSRH_URL }} -s $GITHUB_WORKSPACE/settings.xml -f pom.xml
+        cd ${{ inputs.SERVICE_LOCATION }} && mvn -DskipTests -DshowPasswords=true -X -U -B deploy -Dmaven.wagon.http.retryHandler.count=2 -DaltDeploymentRepository=ossrh::default::${{ secrets.OSSRH_URL }} -s $GITHUB_WORKSPACE/settings.xml -f pom.xml
       env:
         GPG_TTY: $(tty)
 

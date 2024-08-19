@@ -2,6 +2,10 @@ name: Verify keycloak-init Roles
 
 on:
   workflow_call:
+    inputs:
+      kc_values_file_path:
+        required: true
+        type: string
 
 jobs:
   verify-roles:
@@ -19,7 +23,7 @@ jobs:
         run: pip install pyyaml
 
       - name: Debug YAML file contents
-        run: cat ./charts/keycloak-init/values.yaml
+        run: cat ${{ inputs.kc_values_file_path }}
 
       - name: Create Python script
         run: |
@@ -63,7 +67,7 @@ jobs:
                   return 0  # Indicate success
 
           if __name__ == '__main__':
-              sys.exit(extract_roles_and_saroles('./charts/keycloak-init/values.yaml'))
+              sys.exit(extract_roles_and_saroles('${{ inputs.kc_values_file_path }}'))
           " > extract_roles_saroles.py
 
       - name: Run Python script

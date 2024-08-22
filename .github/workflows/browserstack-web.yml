@@ -13,7 +13,15 @@ on:
       BROWSERSTACK_USERNAME:
         required: true
       BROWSERSTACK_ACCESS_KEY:
-        required: true          
+        required: true
+      AWS_ACCESS_KEY_ID:
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        required: true
+      AWS_REGION:
+        required: true
+      S3_BUCKET:
+        required: true    
 
 jobs:
     web-test:

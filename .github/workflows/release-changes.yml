@@ -73,7 +73,7 @@ jobs:
         run: |
           image_repo=$(find . -name 'values.yaml' -exec grep -EiHn 'mosipqa/|mosipdev/|mosipint/|mosipdev2/' {} \;)
            if [ -n "$image_repo" ]; then
-            echo "Error: image repositories found in the following files:"
+            echo "Error: image repository mosipid not found in the following files:"
             echo "$image_repo"
             exit 1
           else

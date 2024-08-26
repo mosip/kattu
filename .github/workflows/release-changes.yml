@@ -22,6 +22,10 @@ on:
         description: 'base branch for PR'
         required: true
         type: string
+      CHART_VERSION:
+        description: 'Helm Chart version to compare'
+        required: true
+        type: string
     secrets:
       SLACK_WEBHOOK_URL:
         required: true
@@ -46,6 +50,35 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install xmlstarlet libxml2-utils
+
+      - name: Check helm chart version
+        run: |
+          CHART_PATHS=$(find . -name "Chart.yaml")
+          echo "$CHART_PATHS"
+          mismatch_found=false
+          for path in $CHART_PATHS; do
+              CHART_HELM_VERSION=$(grep '^version:' "$path" | awk '{print $2}')
+              if [ "${{ github.event.inputs.chart_version }}" != "$CHART_HELM_VERSION" ]; then
+                  echo "Chart versions do not match, Input: "${{ github.event.inputs.chart_version }}" Chart_version: "$CHART_HELM_VERSION"  Path: $path."
+                  mismatch_found=true
+              fi
+          done
+          if [ "$mismatch_found" = true ]; then
+              exit 1
+          else
+              echo "Chart versions match"
+          fi
+
+      - name: Check docker image repository
+        run: |
+          image_repo=$(find . -name 'values.yaml' -exec grep -EiHn 'mosipqa/|mosipdev/|mosipint/|mosipdev2/' {} \;)
+           if [ -n "$image_repo" ]; then
+            echo "Error: image repositories found in the following files:"
+            echo "$image_repo"
+            exit 1
+          else
+            echo "All image repositories are valid"
+          fi
 
       - name: Mannualy changing the pom versions
         run: find . -type f -name "*pom.xml" -print0 | xargs -0 sed -i "s/${{ github.event.inputs.SNAPSHOT_TAG }}/${{ github.event.inputs.RELEASE_TAG }}/g"

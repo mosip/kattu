@@ -59,14 +59,14 @@ jobs:
           for path in $CHART_PATHS; do
               CHART_HELM_VERSION=$(grep '^version:' "$path" | awk '{print $2}')
               if [ "${{ github.event.inputs.chart_version }}" != "$CHART_HELM_VERSION" ]; then
-                  echo "Chart versions do not match, Input: "${{ github.event.inputs.chart_version }}" Chart_version: "$CHART_HELM_VERSION"  Path: $path."
+                  echo "Chart version do not match, Input: "${{ github.event.inputs.chart_version }}" Chart_version: "$CHART_HELM_VERSION"  Path: $path."
                   mismatch_found=true
               fi
           done
           if [ "$mismatch_found" = true ]; then
               exit 1
           else
-              echo "Chart versions match"
+              echo "Chart version match"
           fi
 
       - name: Check docker image repository

@@ -75,14 +75,18 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_AUTH_TOKEN }}
 
-      - name: Tag
+      - name: Create Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          pwd
-          cd ${{ inputs.SERVICE_LOCATION }}
-          VERSION=$(grep -o '"version": "[^"]*' package.json | sed 's/"version": "//') #Replace with the versioning strategy you prefer
+          VERSION=$(grep -o '"version": "[^"]*' package.json | sed 's/"version": "//') # Replace with your versioning strategy
           VERSION="v${VERSION}_npm"
-          git tag $VERSION
-          git push origin $VERSION
+          echo "Creating release $VERSION"
+          curl -X POST \   
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/${{ github.repository }}/releases \
+            -d '{"tag_name": "'"$VERSION"'","name":"Release '"$VERSION"'","body":"Release '"$VERSION"'","draft":false,"prerelease":false}'
 
       - uses: 8398a7/action-slack@v3
         with:
@@ -91,4 +95,3 @@ jobs:
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} # required
         if: "${{ github.event_name != 'pull_request' && failure() }}" # Pick up events even if the job fails or is canceled.
-

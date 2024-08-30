@@ -1,0 +1,104 @@
+name: Helm-release Preparation.
+
+on:
+  workflow_call:
+    inputs:
+      REPO_URL:
+        description: '<github-account-name>/<repo-name>'
+        required: true
+        type: string
+      REPO_BRANCH:
+        description: 'Repo Branch'
+        required: true
+        type: string
+      CHART_VERSION:
+        description: 'Version to update in Chart.yaml files'
+        required: true
+        type: string
+      OLD_TAG:
+        description: 'Old tag to replace in values.yaml (e.g., tag: develop)'
+        required: true
+        default: 'tag: develop'
+        type: string
+      NEW_TAG:
+        description: 'New tag to replace in values.yaml (e.g., tag: 1.0.0)'
+        required: true
+        default: 'tag: 1.0.0'
+        type: string
+      OLD_IMAGE:
+        description: 'Old Docker image to replace (e.g., mosipqa/)'
+        required: false
+        type: string
+      NEW_IMAGE:
+        description: 'New Docker image to replace with (e.g., mosipid/)'
+        required: false
+        type: string
+      BASE:
+        description: 'base branch for PR'
+        required: true
+        type: string
+      COMMIT_MESSAGE:
+        description: 'commit message'
+        required: true
+        type: string
+    secrets:
+      ACTION_PAT:
+        required: true
+
+jobs:
+  helm-release-preparation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.REPO_URL }}
+          ref: ${{ inputs.REPO_BRANCH }}
+
+      - name: Find and Update Chart Versions
+        run: |
+          VERSION_INPUT="${{ github.event.inputs.CHART_VERSION }}"
+          find . -type f -name Chart.yaml | while read -r chart_file; do
+            sed -i "s/^version: .*/version: $VERSION_INPUT/" "$chart_file"
+            echo "Updated version in $chart_file to $VERSION_INPUT"
+          done      
+
+      - name: Replace Docker images and tag in values.yaml
+        run: |
+          OLD_TAG="${{ github.event.inputs.OLD_TAG }}"
+          NEW_TAG="${{ github.event.inputs.NEW_TAG }}"
+          OLD_IMAGE="${{ github.event.inputs.OLD_IMAGE }}"
+          NEW_IMAGE="${{ github.event.inputs.NEW_IMAGE }}"
+          
+          find . -name "values.yaml" -print0 | while IFS= read -r -d '' file; do
+            echo "Processing $file"
+            if [ -z "$OLD_IMAGE" ] || [ -z "$NEW_IMAGE" ]; then
+              sed -i 's|mosipqa/|mosipid/|g' "$file"
+              sed -i 's|mosipdev/|mosipid/|g' "$file"
+              sed -i 's|mosipdev2/|mosipid/|g' "$file"
+              sed -i 's|mosipint/|mosipid/|g' "$file"
+            else
+              sed -i "s|$OLD_IMAGE|$NEW_IMAGE|g" "$file"
+            fi
+            sed -i "s|$OLD_TAG|$NEW_TAG|g" "$file"
+          done
+
+           #IMAGE="${{ github.event.inputs.IMAGE }}"
+           #sed -i "s|mosipqa/|$IMAGE|g" "$file"
+           #sed -i "s|mosipdev/|$IMAGE|g" "$file"
+           #sed -i "s|mosipdev2/|$IMAGE|g" "$file"
+           #sed -i "s|mosipint/|$IMAGE|g" "$file"
+           #sed -i "s|mosipid/|$IMAGE|g" "$file"
+           #sed -i "s|$OLD_TAG|$NEW_TAG|g" "$file"
+          
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6.1.0
+        with:
+          commit-message: Updated chart versions, image and tag for release changes
+          title: ${{ github.event.inputs.COMMIT_MESSAGE }}
+          body: Automated PR for release.
+          branch: releas-branch
+          delete-branch: true
+          base: ${{ github.event.inputs.BASE }}
+          token: ${{ secrets.ACTION_PAT }}
+          signoff: true
+          

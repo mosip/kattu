@@ -25,14 +25,6 @@ on:
         required: true
         default: 'tag: 1.0.0'
         type: string
-      OLD_IMAGE:
-        description: 'Old Docker image to replace (e.g., mosipqa/)'
-        required: false
-        type: string
-      NEW_IMAGE:
-        description: 'New Docker image to replace with (e.g., mosipid/)'
-        required: false
-        type: string
       BASE:
         description: 'base branch for PR'
         required: true
@@ -66,29 +58,15 @@ jobs:
         run: |
           OLD_TAG="${{ github.event.inputs.OLD_TAG }}"
           NEW_TAG="${{ github.event.inputs.NEW_TAG }}"
-          OLD_IMAGE="${{ github.event.inputs.OLD_IMAGE }}"
-          NEW_IMAGE="${{ github.event.inputs.NEW_IMAGE }}"
           
           find . -name "values.yaml" -print0 | while IFS= read -r -d '' file; do
             echo "Processing $file"
-            if [ -z "$OLD_IMAGE" ] || [ -z "$NEW_IMAGE" ]; then
               sed -i 's|mosipqa/|mosipid/|g' "$file"
               sed -i 's|mosipdev/|mosipid/|g' "$file"
               sed -i 's|mosipdev2/|mosipid/|g' "$file"
               sed -i 's|mosipint/|mosipid/|g' "$file"
-            else
-              sed -i "s|$OLD_IMAGE|$NEW_IMAGE|g" "$file"
-            fi
-            sed -i "s|$OLD_TAG|$NEW_TAG|g" "$file"
+              sed -i "s|$OLD_TAG|$NEW_TAG|g" "$file"
           done
-
-           #IMAGE="${{ github.event.inputs.IMAGE }}"
-           #sed -i "s|mosipqa/|$IMAGE|g" "$file"
-           #sed -i "s|mosipdev/|$IMAGE|g" "$file"
-           #sed -i "s|mosipdev2/|$IMAGE|g" "$file"
-           #sed -i "s|mosipint/|$IMAGE|g" "$file"
-           #sed -i "s|mosipid/|$IMAGE|g" "$file"
-           #sed -i "s|$OLD_TAG|$NEW_TAG|g" "$file"
           
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v6.1.0

@@ -15,15 +15,10 @@ on:
         description: 'Version to update in Chart.yaml files'
         required: true
         type: string
-      OLD_TAG:
-        description: 'Old tag to replace in values.yaml (e.g., tag: develop)'
+      IMAGE_TAG:
+        description: 'Tag to update in values.yaml'
         required: true
         default: 'tag: develop'
-        type: string
-      NEW_TAG:
-        description: 'New tag to replace in values.yaml (e.g., tag: 1.0.0)'
-        required: true
-        default: 'tag: 1.0.0'
         type: string
       BASE:
         description: 'base branch for PR'
@@ -54,18 +49,26 @@ jobs:
             echo "Updated version in $chart_file to $VERSION_INPUT"
           done      
 
-      - name: Replace Docker images and tag in values.yaml
+      - name: Replace Docker reposotory and tag in values.yaml
         run: |
-          OLD_TAG="${{ github.event.inputs.OLD_TAG }}"
-          NEW_TAG="${{ github.event.inputs.NEW_TAG }}"
+          new_tag="${{ github.event.inputs.IMAGE_TAG }}"
+          export new_tag
           
-          find . -name "values.yaml" -print0 | while IFS= read -r -d '' file; do
+          values_files=$(find . -name "values.yaml")
+          for file in $values_files; do
             echo "Processing $file"
-              sed -i 's|mosipqa/|mosipid/|g' "$file"
-              sed -i 's|mosipdev/|mosipid/|g' "$file"
-              sed -i 's|mosipdev2/|mosipid/|g' "$file"
-              sed -i 's|mosipint/|mosipid/|g' "$file"
-              sed -i "s|$OLD_TAG|$NEW_TAG|g" "$file"
+            
+            if yq eval '.image' "$file" | grep -qv 'null'; then
+              yq eval '.image.repository |= sub("^[^/]+", "mosipid")' -i "$file"
+              yq eval '.image.tag |= env(new_tag)' -i "$file"
+             fi
+
+            if yq eval '.job' "$file" | grep -qv 'null'; then
+              yq eval '.job.image.repository |= sub("^[^/]+", "mosipid")' -i "$file"
+              yq eval '.job.image.tag |= env(new_tag)' -i "$file"
+             fi
+      
+            echo "Updated $file"
           done
           
       - name: Create Pull Request

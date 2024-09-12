@@ -18,7 +18,6 @@ on:
       IMAGE_TAG:
         description: 'Tag to update in values.yaml'
         required: true
-        default: 'tag: develop'
         type: string
       BASE:
         description: 'base branch for PR'

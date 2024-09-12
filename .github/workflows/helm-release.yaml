@@ -1,0 +1,84 @@
+name: Helm-release Preparation.
+
+on:
+  workflow_call:
+    inputs:
+      REPO_URL:
+        description: '<github-account-name>/<repo-name>'
+        required: true
+        type: string
+      REPO_BRANCH:
+        description: 'Repo Branch'
+        required: true
+        type: string
+      CHART_VERSION:
+        description: 'Version to update in Chart.yaml files'
+        required: true
+        type: string
+      IMAGE_TAG:
+        description: 'Tag to update in values.yaml'
+        required: true
+        type: string
+      BASE:
+        description: 'base branch for PR'
+        required: true
+        type: string
+      COMMIT_MESSAGE:
+        description: 'commit message'
+        required: true
+        type: string
+    secrets:
+      ACTION_PAT:
+        required: true
+
+jobs:
+  helm-release-preparation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.REPO_URL }}
+          ref: ${{ inputs.REPO_BRANCH }}
+
+      - name: Find and Update Chart Versions
+        run: |
+          VERSION_INPUT="${{ github.event.inputs.CHART_VERSION }}"
+          find . -type f -name Chart.yaml | while read -r chart_file; do
+            sed -i "s/^version: .*/version: $VERSION_INPUT/" "$chart_file"
+            echo "Updated version in $chart_file to $VERSION_INPUT"
+          done      
+
+      - name: Replace Docker reposotory and tag in values.yaml
+        run: |
+          new_tag="${{ github.event.inputs.IMAGE_TAG }}"
+          export new_tag
+          
+          values_files=$(find . -name "values.yaml")
+          for file in $values_files; do
+            echo "Processing $file"
+            
+            if yq eval '.image' "$file" | grep -qv 'null'; then
+              yq eval '.image.repository |= sub("^[^/]+", "mosipid")' -i "$file"
+              yq eval '.image.tag |= env(new_tag)' -i "$file"
+             fi
+
+            if yq eval '.job' "$file" | grep -qv 'null'; then
+              yq eval '.job.image.repository |= sub("^[^/]+", "mosipid")' -i "$file"
+              yq eval '.job.image.tag |= env(new_tag)' -i "$file"
+             fi
+      
+            echo "Updated $file"
+          done
+          
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6.1.0
+        with:
+          commit-message: Updated chart versions, image and tag for release changes
+          title: ${{ github.event.inputs.COMMIT_MESSAGE }}
+          body: Automated PR for release.
+          branch: releas-branch
+          delete-branch: true
+          base: ${{ github.event.inputs.BASE }}
+          token: ${{ secrets.ACTION_PAT }}
+          signoff: true
+          

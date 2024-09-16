@@ -118,7 +118,7 @@ jobs:
             artifact_path="*/target/${ARTIFACT}"
             if ls $artifact_path 1> /dev/null 2>&1; then
               echo "Adding non-executable ARTIFACT: $artifact_path to release zip"
-              zip -rq ${{ inputs.BUILD_ARTIFACT }}.zip "$artifact_path"
+              zip -r ${{ inputs.BUILD_ARTIFACT }}.zip $(dirname "$artifact_path")
             else
               echo "Warning: ARTIFACT $ARTIFACT not found"
             fi

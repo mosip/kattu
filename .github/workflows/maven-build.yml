@@ -9,6 +9,9 @@ on:
       BUILD_ARTIFACT:
         required: true
         type: string
+      MAVEN_NON_EXEC_ARTIFACTS:
+        required: false
+        type: string 
     secrets:
       OSSRH_USER:
         required: true
@@ -101,12 +104,26 @@ jobs:
     - name: Build with Maven
       run: cd ${{ inputs.SERVICE_LOCATION }} && mvn -U -B package -Dmaven.wagon.http.retryHandler.count=2 --file pom.xml -s $GITHUB_WORKSPACE/settings.xml
 
-    - name: Ready the springboot artifacts
+    - name: Ready the springboot executable artifacts
       if: ${{ !contains(github.ref, 'master') || !contains(github.ref, 'main') }}
       run: |
         ## FIND JARS & COPY ONLY EXECUTABLE JARs STORED UNDER TARGET DIRECTORY 
         find ${{ inputs.SERVICE_LOCATION }} -path '*/target/*' -name '*.jar'  -type f  -executable -exec zip ${{ inputs.BUILD_ARTIFACT }}.zip {} +
 
+    - name: Ready the springboot non-executable artifacts
+      if: ${{ inputs.MAVEN_NON_EXEC_ARTIFACTS }}
+      run: |
+          IFS=',' read -ra ARTIFACTS <<< "${{ inputs.MAVEN_NON_EXEC_ARTIFACTS }}"
+          for ARTIFACT in "${ARTIFACTS[@]}"; do
+            artifact_path="*/target/${ARTIFACT}"
+            if ls $artifact_path 1> /dev/null 2>&1; then
+              echo "Adding non-executable ARTIFACT: $artifact_path to release zip"
+              zip -r ${{ inputs.BUILD_ARTIFACT }}.zip $artifact_path
+            else
+              echo "Warning: ARTIFACT $ARTIFACT not found"
+            fi
+          done
+     
     - name: Upload the springboot jars
       if: ${{ !contains(github.ref, 'master') || !contains(github.ref, 'main') }}
       uses: actions/upload-artifact@v3

@@ -71,7 +71,8 @@ jobs:
       - name: Unzip and extract for maven
         if: ${{ contains(inputs.NPM_BUILD, 'false' ) && ( inputs.BUILD_ARTIFACT != 'false' ) && ( inputs.ONLY_DOCKER == false ) }}
         run: |
-          unzip -u "${{ inputs.BUILD_ARTIFACT }}.zip" "${{ inputs.SERVICE_LOCATION }}/target/*" -d "${{ env.SERVICE_LOCATION }}/target/"
+          cd "${{ inputs.SERVICE_LOCATION }}"
+          unzip "${{ inputs.BUILD_ARTIFACT }}.zip"
 
       - name: Unzip and extract for npm
         if: ${{ contains(inputs.NPM_BUILD, 'true' ) && ( inputs.BUILD_ARTIFACT != false )  && ( inputs.ONLY_DOCKER == false )}}

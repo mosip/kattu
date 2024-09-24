@@ -6,6 +6,10 @@ on:
       NODE_VERSION:
         default: "16.x"
         type: string
+      JAVA_VERSION:
+        description: "Java version for the build"
+        default: "11"
+        type: string
       MIMOTO_HOST:
         description: "Mimoto backend service URL"
         default: "https://api.sandbox.mosip.net"
@@ -49,7 +53,7 @@ on:
         required: true
         default: "scripts"
         type: string
-      SCRIPT_NAME: 
+      SCRIPT_NAME:
         description: "Build script name"
         required: true
         default: "./android-build.sh"
@@ -75,6 +79,12 @@ jobs:
       - uses: actions/setup-node@v3
         with:
           node-version: ${{ inputs.NODE_VERSION }}
+
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'adopt'
+          java-version: ${{ inputs.JAVA_VERSION }}
 
       - name: Cache npm dependencies
         uses: actions/cache@v3.3.1

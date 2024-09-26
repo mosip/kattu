@@ -17,6 +17,11 @@ on:
         required: false
         default: 11
         type: number
+      LICENSE_NAME:
+        description: "License Name"
+        required: false
+        default: "MIT"
+        type: string
     secrets:
       OSSRH_USER:
         required: true
@@ -114,7 +119,7 @@ jobs:
           cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}
           chmod +x ./gradlew
           ./gradlew generatePom
-          xmlstarlet select -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:licenses[1]/s:license/s:name" -nl build/publications/aar/pom-default.xml | grep -q "MIT"
+          xmlstarlet select -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:licenses[1]/s:license/s:name" -nl build/publications/aar/pom-default.xml | grep -q "${{ inputs.LICENSE_NAME }}"
 
       - name: Build check for developer
         run: |

@@ -137,7 +137,11 @@ jobs:
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.IOS_SERVICE_LOCATION }}
           pod install
-          pod install 
+          pod install
+      
+      - name: Update Fastlane to Latest Version
+        run: |
+          gem install fastlane --no-document
 
       - name: Deploy iOS Beta to TestFlight
         run: |

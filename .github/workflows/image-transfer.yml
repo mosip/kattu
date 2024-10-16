@@ -35,9 +35,13 @@ jobs:
       - name: push images
         run: |
           cd release/vidivi
-          sudo pip install python-pip
-          sudo pip install docker
-          sudo python3 vidivi.py push
+          sudo apt-get update
+          sudo apt-get install -y python3-pip python3-venv
+          python3 -m venv venv  # Create a virtual environment
+          source venv/bin/activate  # Activate the virtual environment
+          pip install docker requests urllib3 PyYAML
+          pip show docker  # Verify installation
+          python vidivi.py push
 
       - uses: 8398a7/action-slack@v3
         with:

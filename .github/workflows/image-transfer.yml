@@ -36,11 +36,13 @@ jobs:
         run: |
           cd release/vidivi
           sudo apt-get update
-          sudo apt-get install -y python3-pip
-          python3 -m pip install docker
-          python3 -m pip show docker  # Verify installation
-          sudo python3 vidivi.py push
-
+          sudo apt-get install -y python3-pip python3-venv
+          python3 -m venv venv  # Create a virtual environment
+          source venv/bin/activate  # Activate the virtual environment
+          pip install docker requests urllib3 PyYAML
+          pip show docker  # Verify installation
+          python vidivi.py push
+          
       - name: commit and push vidivi log
         run: |
           cd release/vidivi/logs/

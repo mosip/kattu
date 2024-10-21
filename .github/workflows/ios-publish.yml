@@ -141,7 +141,7 @@ jobs:
       
       - name: Update Fastlane to Latest Version
         run: |
-          gem install fastlane --no-document
+          brew install fastlane
 
       - name: Deploy iOS Beta to TestFlight
         run: |

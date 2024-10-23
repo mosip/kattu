@@ -19,7 +19,12 @@ jobs:
       - name: Set environment variables
         run: |
           echo "SERVICE_NAME=${{ inputs.service_name }}" >> $GITHUB_ENV
-          echo "VERSION=${{ inputs.version }}" >> $GITHUB_ENV
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BRANCH_NAME=${{ github.base_ref }}
+          else
+            BRANCH_NAME=${{ github.ref_name }}
+          fi
+          echo "VERSION=${BRANCH_NAME}" >> $GITHUB_ENV
 
       - name: Checkout code
         uses: actions/checkout@v3

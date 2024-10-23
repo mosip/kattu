@@ -1,0 +1,49 @@
+name: Gradle build
+
+on:
+  workflow_call:
+    inputs:
+      JAVA_VERSION:
+        required: false
+        default: 21
+        type: number
+      SERVICE_LOCATION:
+        required: true
+        type: string
+    secrets:
+      SLACK_WEBHOOK_URL:
+        required: true
+
+jobs:
+  maven-build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up JDK
+      uses: actions/setup-java@v3
+      with:
+        distribution: adopt
+        java-version: ${{ inputs.JAVA_VERSION }}
+        server-id: ossrh
+        settings-path: ${{ github.workspace }}
+    - name: Cache Gradle packages
+      uses: actions/cache@v3.3.1
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle') }}
+        restore-keys: ${{ runner.os }}-gradle-
+    - uses: actions/checkout@v3.1.0
+    - name: Run tests
+      run: |
+        cd ${{ inputs.SERVICE_LOCATION }}
+        ./gradlew test
+    - uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        fields: repo,message,author,commit,workflow,job # selectable (default: repo,message)
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} # required
+      if: "${{ github.event_name != 'pull_request' && failure() }}" # Pick up events even if the job fails or is canceled.
+

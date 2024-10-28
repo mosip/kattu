@@ -21,30 +21,7 @@ on:
         required: false
         type: boolean
         default: false
-      GITHUB_USER:
-        required: true
-        type: string
-      PR_URL:
-        required: true
-        type: string
-      WORKFLOW:
-        required: true
-        type: string
-      ACTION:
-        required: true
-        type: string
-      COMMIT:
-        required: true
-        type: string
-      REPO:
-        required: true
-        type: string
-      JOB_URL:
-        required: true
-        type: string
-      MESSAGE:
-        required: true
-        type: string
+
     secrets:
       RELEASE_DOCKER_HUB:
         required: true
@@ -52,13 +29,7 @@ on:
         required: true
       DEV_NAMESPACE_DOCKER_HUB:
         required: true
-      SLACK_BOT_TOKEN:
-        required: true
-      DEFAULT_CHANNEL_ID:
-        required: true
-      GPG_USER_MAP_PASSPHRASE:
-        required: true
-      SECONDARY_CHANNEL_ID:
+      SLACK_WEBHOOK_URL:
         required: true
 
 jobs:
@@ -68,10 +39,7 @@ jobs:
       NAMESPACE: ${{ secrets.DEV_NAMESPACE_DOCKER_HUB }}
       SERVICE_LOCATION: ${{ inputs.SERVICE_LOCATION }}
       SERVICE_NAME: ${{ inputs.SERVICE_NAME }}
-      GPG_USER_MAP_PASSPHRASE: ${{ secrets.GPG_USER_MAP_PASSPHRASE }}
-      SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-      DEFAULT_CHANNEL_ID: ${{ secrets.DEFAULT_CHANNEL_ID }}
-      SECONDARY_CHANNEL_ID: ${{ secrets.SECONDARY_CHANNEL_ID }}
+
     steps:
       - uses: actions/checkout@v3
       - uses: actions/download-artifact@v3
@@ -153,21 +121,10 @@ jobs:
           docker tag $SERVICE_NAME $IMAGE_ID:$VERSION
           docker push $IMAGE_ID:$VERSION
 
-  notify-slack:
-    needs: build-dockers
-    if: failure()
-    secrets:
-        GPG_USER_MAP_PASSPHRASE: ${{ secrets.GPG_USER_MAP_PASSPHRASE }}
-        SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-        DEFAULT_CHANNEL_ID: ${{ secrets.DEFAULT_CHANNEL_ID }}
-        SECONDARY_CHANNEL_ID: ${{ secrets.SECONDARY_CHANNEL_ID}}
-    uses: bn46org/kattu/.github/workflows/slack-notification.yml@develop
-    with:
-      GITHUB_USER: ${{ inputs.GITHUB_USER }}
-      WORKFLOW: ${{ INPUTS.WORKFLOW }}
-      PR_URL: ${{ inputs.PR_URL }}
-      ACTION: ${{ inputs.ACTION }}
-      COMMIT: ${{ inputs.COMMIT }}
-      REPO: ${{ inputs.REPO }}
-      JOB_URL: ${{ inputs.JOB_URL }}
-      MESSAGE: ${{ inputs.MESSAGE }}
+      - uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          fields: repo,message,author,commit,workflow,job # selectable (default: repo,message)
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} # required
+        if: "${{ github.event_name != 'pull_request' && failure() }}" # Pick up events even if the job fails or is canceled.

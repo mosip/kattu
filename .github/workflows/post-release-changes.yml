@@ -37,12 +37,8 @@ on:
         description: 'Version to update to in POMs'
         required: false
         type: string
-      CHART_VERSION:
-        description: 'Version to update in Chart.yaml files'
-        required: true
-        type: string
-      INSTALL_CHART_VERSION:
-        description: 'Version to update in install.sh files'
+      VERSION_PAIR:
+        description: 'Versions for Chart.yaml and install.sh files, format: CHART_VERSION,INSTALL_CHART_VERSION'
         required: true
         type: string
       COMMIT_MESSAGE:
@@ -106,19 +102,20 @@ jobs:
 
       - name: Find and Update Chart Versions
         run: |
-          VERSION_INPUT="${{ github.event.inputs.CHART_VERSION }}"
+          CHART_VERSION=$(echo "${{ inputs.VERSION_PAIR }}" | cut -d',' -f1)
           find . -type f -name Chart.yaml | while read -r chart_file; do
-            sed -i "s/^version: .*/version: $VERSION_INPUT/" "$chart_file"
-            echo "Updated version in $chart_file to $VERSION_INPUT"
+            sed -i "s/^version: .*/version: $CHART_VERSION/" "$chart_file"
+            echo "Updated version in $chart_file to $CHART_VERSION"
           done
 
       - name: Find and Update Install Chart Versions
         run: |
-          INSTALL_CHART_VERSION="${{ github.event.inputs.INSTALL_CHART_VERSION }}"
+          INSTALL_CHART_VERSION=$(echo "${{ inputs.VERSION_PAIR }}" | cut -d',' -f2)
           find . -type f -name install.sh | while read -r install_file; do
             sed -i "s/^CHART_VERSION: .*/CHART_VERSION: $INSTALL_CHART_VERSION/" "$install_file"
             echo "Updated version in $install_file to $INSTALL_CHART_VERSION"
-          done 
+          done
+  
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v5.0.2
         with:

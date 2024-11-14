@@ -60,6 +60,9 @@ jobs:
           echo "${{ toJSON(inputs) }}"
 
       - name: Check Dockerfile for forbidden organizations and tags
+        if: |
+          (github.event_name == 'push' && startsWith(github.ref_name, 'release')) ||
+          (github.event_name == 'pull_request' && startsWith(github.base_ref, 'release'))
         run: |
           cd ${{ inputs.SERVICE_LOCATION }} 
           if [ ! -f Dockerfile ]; then

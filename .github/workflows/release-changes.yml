@@ -22,6 +22,10 @@ on:
         description: 'base branch for PR'
         required: true
         type: string
+      COMMIT_MESSAGE:
+        description: 'commit message'
+        required: true
+        type: string
     secrets:
       SLACK_WEBHOOK_URL:
         required: true
@@ -121,7 +125,7 @@ jobs:
         uses: peter-evans/create-pull-request@v5.0.2
         with:
           commit-message: Updated Pom versions for release changes
-          title: Release changes
+          title: ${{ github.event.inputs.COMMIT_MESSAGE }}
           body: Automated PR for ${{ github.event.inputs.RELEASE_TAG }} release.
           branch: releas-branch
           delete-branch: true

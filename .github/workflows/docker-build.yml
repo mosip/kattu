@@ -58,7 +58,8 @@ jobs:
       - name: Check Dockerfile for forbidden organizations and tags
         if: |
           (github.event_name == 'push' && startsWith(github.ref_name, 'release')) ||
-          (github.event_name == 'pull_request' && startsWith(github.base_ref, 'release'))
+          (github.event_name == 'pull_request' && startsWith(github.base_ref, 'release')) ||
+          (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/release'))
         run: |
           cd ${{ inputs.SERVICE_LOCATION }} 
           if [ ! -f Dockerfile ]; then

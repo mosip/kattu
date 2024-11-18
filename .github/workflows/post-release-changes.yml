@@ -37,6 +37,14 @@ on:
         description: 'Version to update to in POMs'
         required: false
         type: string
+      VERSION_PAIR:
+        description: 'Versions for Chart.yaml and install.sh files, format: CHART_VERSION,INSTALL_CHART_VERSION'
+        required: true
+        type: string
+      COMMIT_MESSAGE:
+        description: 'commit message'
+        required: true
+        type: string
     secrets:
       SLACK_WEBHOOK_URL:
         required: true
@@ -65,6 +73,7 @@ jobs:
           echo "UPDATE_POM_VERSION: ${{ inputs.UPDATE_POM_VERSION }}"
           echo "FROM_VERSION: ${{ inputs.FROM_VERSION }}"
           echo "TO_VERSION: ${{ inputs.TO_VERSION }}"
+          echo "VERSION_PAIR: ${{ inputs.VERSION_PAIR }}"
 
       - name: Check for Conflicting Updates
         run: |
@@ -92,11 +101,30 @@ jobs:
           echo "Updating POM versions from ${{ inputs.FROM_VERSION }} to ${{ inputs.TO_VERSION }}"
           find . -type f -name "pom.xml" -exec sed -i "s/${{ inputs.FROM_VERSION }}/${{ inputs.TO_VERSION }}/g" {} +
 
+      - name: Find and Update Chart Versions
+        run: |
+          CHART_VERSION=$(echo "${{ inputs.VERSION_PAIR }}" | cut -d',' -f1)
+          find . -type f -name Chart.yaml | while read -r chart_file; do
+            sed -i "s/^version: .*/version: $CHART_VERSION/" "$chart_file"
+            echo "Updated version in $chart_file to $CHART_VERSION"
+          done
+
+      - name: Find and Update Install Chart Versions
+        run: |
+          INSTALL_CHART_VERSION=$(echo "${{ inputs.VERSION_PAIR }}" | cut -d',' -f2)
+          echo "Using INSTALL_CHART_VERSION=$INSTALL_CHART_VERSION"
+          find . -type f -name install.sh | while read -r install_file; do
+            echo "Processing $install_file"
+            sed -i "s/^CHART_VERSION=.*/CHART_VERSION=$INSTALL_CHART_VERSION/" "$install_file"
+            echo "Updated version in $install_file to $INSTALL_CHART_VERSION"
+          done
+  
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v5.0.2
         with:
-          commit-message: Updated Pom versions for release changes
-          title: Post release changes
+          commit-message: Updated Pom version and Chart version for post-release changes
+          title: ${{ github.event.inputs.COMMIT_MESSAGE }}
+          body: Automated PR for release.
           branch: releas-branch
           delete-branch: true
           base: ${{ github.event.inputs.BASE }}

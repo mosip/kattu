@@ -75,11 +75,20 @@ jobs:
 
       - name: Analyze with SonarCloud
         run: |
-          MODULE_NAME=$(basename "${{ inputs.SERVICE_LOCATION }}/")
-          cd ${{ inputs.SERVICE_LOCATION }} && mvn -U -B verify sonar:sonar -Dmaven.wagon.http.retryHandler.count=2 -Dsonar.projectKey=${{ inputs.PROJECT_KEY }}-${MODULE_NAME} -Dsonar.organization=${{ secrets.ORG_KEY }} -Dsonar.host.url=${{ inputs.SONAR_URL }} -Dsonar.token=${{ secrets.SONAR_TOKEN }} --file pom.xml -s $GITHUB_WORKSPACE/settings.xml
+          MODULE_NAME=$(basename "${{ inputs.SERVICE_LOCATION }}")
+          echo "Derived MODULE_NAME: ${MODULE_NAME}"
+          cd ${{ inputs.SERVICE_LOCATION }} && \
+          mvn -U -B verify sonar:sonar \
+            -Dmaven.wagon.http.retryHandler.count=2 \
+            -Dsonar.projectKey=${{ inputs.PROJECT_KEY }}-${MODULE_NAME} \
+            -Dsonar.organization=${{ secrets.ORG_KEY }} \
+            -Dsonar.host.url=${{ inputs.SONAR_URL }} \
+            -Dsonar.token=${{ secrets.SONAR_TOKEN }} \
+            --file pom.xml -s $GITHUB_WORKSPACE/settings.xml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
 
 
       - uses: 8398a7/action-slack@v3

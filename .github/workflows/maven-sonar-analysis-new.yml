@@ -75,12 +75,12 @@ jobs:
 
       - name: Analyze with SonarCloud
         run: |
-          MODULE_NAME=$(basename "${{ inputs.SERVICE_LOCATION }}")
-          echo "Derived MODULE_NAME: ${MODULE_NAME}"
+          UNIQUE_ID=$(date +%s) # Generates a timestamp as a unique identifier
+          echo "Derived UNIQUE_ID: ${UNIQUE_ID}"
           cd ${{ inputs.SERVICE_LOCATION }} && \
           mvn -U -B verify sonar:sonar \
             -Dmaven.wagon.http.retryHandler.count=2 \
-            -Dsonar.projectKey=${{ inputs.PROJECT_KEY }}-${MODULE_NAME} \
+            -Dsonar.projectKey=${{ inputs.PROJECT_KEY }}-${{ inputs.SERVICE_LOCATION }}-${UNIQUE_ID} \
             -Dsonar.organization=${{ secrets.ORG_KEY }} \
             -Dsonar.host.url=${{ inputs.SONAR_URL }} \
             -Dsonar.token=${{ secrets.SONAR_TOKEN }} \
@@ -88,6 +88,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
 
 
 

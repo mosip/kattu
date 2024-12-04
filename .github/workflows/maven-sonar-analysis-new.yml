@@ -80,7 +80,7 @@ jobs:
           cd ${{ inputs.SERVICE_LOCATION }} && \
           mvn -U -B verify sonar:sonar \
             -Dmaven.wagon.http.retryHandler.count=2 \
-            -Dsonar.projectKey=${{ inputs.PROJECT_KEY }}-${{ inputs.SERVICE_LOCATION }}-${UNIQUE_ID} \
+            -Dsonar.projectKey=${{ inputs.PROJECT_KEY }}-${UNIQUE_ID} \
             -Dsonar.organization=${{ secrets.ORG_KEY }} \
             -Dsonar.host.url=${{ inputs.SONAR_URL }} \
             -Dsonar.token=${{ secrets.SONAR_TOKEN }} \

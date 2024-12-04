@@ -68,12 +68,12 @@ jobs:
             echo "Processing $file"
             
             if yq eval '.image' "$file" | grep -qv 'null'; then
-              yq eval '.image.repository |= sub("^[^/]+", "mosipid")' -i "$file"
+              yq eval '.image.repository |= sub("^[^/]+", "mosipqa")' -i "$file"
               yq eval '.image.tag |= env(new_tag)' -i "$file"
              fi
 
             if yq eval '.job' "$file" | grep -qv 'null'; then
-              yq eval '.job.image.repository |= sub("^[^/]+", "mosipid")' -i "$file"
+              yq eval '.job.image.repository |= sub("^[^/]+", "mosipqa")' -i "$file"
               yq eval '.job.image.tag |= env(new_tag)' -i "$file"
              fi
       

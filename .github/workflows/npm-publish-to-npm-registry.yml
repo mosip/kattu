@@ -59,6 +59,23 @@ jobs:
       - name: NPM Install Dependencies
         run: cd ${{ inputs.SERVICE_LOCATION }} && npm install
 
+      - name: Get version from package.json
+        id: version
+        run: |
+          VERSION=$(node -p "require('${{ inputs.SERVICE_LOCATION }}/package.json').version")
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "Version extracted: $VERSION"
+
+      - name: Determine if it's a beta version
+        id: version_type
+        run: |
+          VERSION_TYPE="main"
+          if [[ "${{ env.VERSION }}" == *"-beta"* ]]; then
+            VERSION_TYPE="beta"
+          fi
+          echo "VERSION_TYPE=${VERSION_TYPE}" >> $GITHUB_ENV
+          echo "Version type: $VERSION_TYPE"
+
       - name: Build APK via Gradlew
         if: ${{ inputs.ANDROID_LOCATION != 'false' }}
         run: |
@@ -71,24 +88,30 @@ jobs:
         run: cd ${{ inputs.SERVICE_LOCATION }} && npm run verify
 
       - name: Publish package
-        run: cd ${{ inputs.SERVICE_LOCATION }} && npm publish --access public
+        run: |
+          if [[ "${{ env.VERSION_TYPE }}" == "beta" ]]; then
+            # Extract beta version suffix from version and append -beta.<run_number>
+            VERSION_SUFFIX="${{ env.VERSION }}-beta.${{ github.run_number }}"
+            echo "Publishing beta version: $VERSION_SUFFIX"
+            cd ${{ inputs.SERVICE_LOCATION }} && npm publish --access public --tag beta --force
+          else
+            # Publish as main version
+            echo "Publishing main version: ${{ env.VERSION }}"
+            cd ${{ inputs.SERVICE_LOCATION }} && npm publish --access public --force
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_AUTH_TOKEN }}
 
       - name: Tag
         run: |
-          pwd
-          cd ${{ inputs.SERVICE_LOCATION }}
-          VERSION=$(grep -o '"version": "[^"]*' package.json | sed 's/"version": "//') #Replace with the versioning strategy you prefer
-          VERSION="v${VERSION}_npm"
-          git tag $VERSION
-          git push origin $VERSION
+          VERSION_TAG="${{ env.VERSION_TYPE }}-${{ env.VERSION }}"
+          git tag $VERSION_TAG
+          git push origin $VERSION_TAG
 
       - uses: 8398a7/action-slack@v3
         with:
           status: ${{ job.status }}
-          fields: repo,message,author,commit,workflow,job # selectable (default: repo,message)
+          fields: repo,message,author,commit,workflow,job
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} # required
-        if: "${{ github.event_name != 'pull_request' && failure() }}" # Pick up events even if the job fails or is canceled.
-
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        if: failure() # Slack notification on failure

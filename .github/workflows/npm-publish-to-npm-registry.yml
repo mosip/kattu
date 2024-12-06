@@ -7,19 +7,6 @@ on:
         description: 'SERVICE LOCATION'
         required: true
         type: string
-      ANDROID_LOCATION:
-        description: 'ANDROID LOCATION'
-        required: false
-        type: string
-        default: false
-      GRADLEW_ARGS:
-        description: 'Provide gradlew arguments'
-        required: false
-        type: string
-      PUBLISH_TYPE:
-        description: 'Publish type: beta or main'
-        required: true
-        type: string
     secrets:
       NPM_AUTH_TOKEN:
         required: true
@@ -36,7 +23,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0  # Ensures full history for better analysis
+          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
 
       - uses: actions/setup-node@v3.7.0
         with:
@@ -63,6 +50,23 @@ jobs:
       - name: NPM Install Dependencies
         run: cd ${{ inputs.SERVICE_LOCATION }} && npm install
 
+      - name: Get version from package.json
+        id: version
+        run: |
+          VERSION=$(node -p "require('${{ inputs.SERVICE_LOCATION }}/package.json').version")
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "Version extracted: $VERSION"
+
+      - name: Determine if it's a beta version
+        id: version_type
+        run: |
+          VERSION_TYPE="main"
+          if [[ "${{ env.VERSION }}" == *"-beta"* ]]; then
+            VERSION_TYPE="beta"
+          fi
+          echo "VERSION_TYPE=${VERSION_TYPE}" >> $GITHUB_ENV
+          echo "Version type: $VERSION_TYPE"
+
       - name: Build APK via Gradlew
         if: ${{ inputs.ANDROID_LOCATION != 'false' }}
         run: |
@@ -74,33 +78,26 @@ jobs:
       - name: Verify the build application
         run: cd ${{ inputs.SERVICE_LOCATION }} && npm run verify
 
-      - name: Publish Package
+      - name: Publish package
         run: |
-          cd ${{ inputs.SERVICE_LOCATION }}
-          if [ "${{ inputs.PUBLISH_TYPE }}" = "beta" ]; then
-            echo "Publishing as beta version..."
-            npm publish --access public --tag beta
-          elif [ "${{ inputs.PUBLISH_TYPE }}" = "main" ]; then
-            echo "Publishing as main version..."
-            npm publish --access public
+          if [[ "${{ env.VERSION_TYPE }}" == "beta" ]]; then
+            # Extract beta version suffix from version and append -beta.<run_number>
+            VERSION_SUFFIX="${{ env.VERSION }}-beta.${{ github.run_number }}"
+            echo "Publishing beta version: $VERSION_SUFFIX"
+            cd ${{ inputs.SERVICE_LOCATION }} && npm publish --access public --tag beta --force
           else
-            echo "Invalid PUBLISH_TYPE: ${{ inputs.PUBLISH_TYPE }}"
-            exit 1
+            # Publish as main version
+            echo "Publishing main version: ${{ env.VERSION }}"
+            cd ${{ inputs.SERVICE_LOCATION }} && npm publish --access public --force
           fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_AUTH_TOKEN }}
 
-      - name: Tag Release
+      - name: Tag
         run: |
-          cd ${{ inputs.SERVICE_LOCATION }}
-          VERSION=$(grep -o '"version": "[^"]*' package.json | sed 's/"version": "//')
-          if [ "${{ inputs.PUBLISH_TYPE }}" = "beta" ]; then
-            VERSION="v${VERSION}-beta"
-          else
-            VERSION="v${VERSION}"
-          fi
-          git tag $VERSION
-          git push origin $VERSION
+          VERSION_TAG="${{ env.VERSION_TYPE }}-${{ env.VERSION }}"
+          git tag $VERSION_TAG
+          git push origin $VERSION_TAG
 
       - uses: 8398a7/action-slack@v3
         with:
@@ -108,4 +105,4 @@ jobs:
           fields: repo,message,author,commit,workflow,job
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-        if: "${{ github.event_name != 'pull_request' && failure() }}"
+        if: failure() # Slack notification on failure

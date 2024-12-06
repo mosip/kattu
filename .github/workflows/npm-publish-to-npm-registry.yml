@@ -7,6 +7,15 @@ on:
         description: 'SERVICE LOCATION'
         required: true
         type: string
+      ANDROID_LOCATION:
+        description: 'ANDROID LOCATION'
+        required: false
+        type: string
+        default: false
+      GRADLEW_ARGS:
+        description: 'Provide gradlew arguments'
+        required: false
+        type: string
     secrets:
       NPM_AUTH_TOKEN:
         required: true

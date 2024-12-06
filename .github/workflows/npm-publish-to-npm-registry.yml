@@ -16,6 +16,10 @@ on:
         description: 'Provide gradlew arguments'
         required: false
         type: string
+      PUBLISH_TYPE:
+        description: 'Publish type: beta or main'
+        required: true
+        type: string
     secrets:
       NPM_AUTH_TOKEN:
         required: true
@@ -32,7 +36,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
+          fetch-depth: 0  # Ensures full history for better analysis
 
       - uses: actions/setup-node@v3.7.0
         with:
@@ -70,25 +74,38 @@ jobs:
       - name: Verify the build application
         run: cd ${{ inputs.SERVICE_LOCATION }} && npm run verify
 
-      - name: Publish package
-        run: cd ${{ inputs.SERVICE_LOCATION }} && npm publish --access public
+      - name: Publish Package
+        run: |
+          cd ${{ inputs.SERVICE_LOCATION }}
+          if [ "${{ inputs.PUBLISH_TYPE }}" = "beta" ]; then
+            echo "Publishing as beta version..."
+            npm publish --access public --tag beta
+          elif [ "${{ inputs.PUBLISH_TYPE }}" = "main" ]; then
+            echo "Publishing as main version..."
+            npm publish --access public
+          else
+            echo "Invalid PUBLISH_TYPE: ${{ inputs.PUBLISH_TYPE }}"
+            exit 1
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_AUTH_TOKEN }}
 
-      - name: Tag
+      - name: Tag Release
         run: |
-          pwd
           cd ${{ inputs.SERVICE_LOCATION }}
-          VERSION=$(grep -o '"version": "[^"]*' package.json | sed 's/"version": "//') #Replace with the versioning strategy you prefer
-          VERSION="v${VERSION}_npm"
+          VERSION=$(grep -o '"version": "[^"]*' package.json | sed 's/"version": "//')
+          if [ "${{ inputs.PUBLISH_TYPE }}" = "beta" ]; then
+            VERSION="v${VERSION}-beta"
+          else
+            VERSION="v${VERSION}"
+          fi
           git tag $VERSION
           git push origin $VERSION
 
       - uses: 8398a7/action-slack@v3
         with:
           status: ${{ job.status }}
-          fields: repo,message,author,commit,workflow,job # selectable (default: repo,message)
+          fields: repo,message,author,commit,workflow,job
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} # required
-        if: "${{ github.event_name != 'pull_request' && failure() }}" # Pick up events even if the job fails or is canceled.
-
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        if: "${{ github.event_name != 'pull_request' && failure() }}"

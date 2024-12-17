@@ -39,7 +39,7 @@ jobs:
           swift-version: '5.10.0'
 
       - name: Cache npm dependencies
-        uses: actions/cache@v3.3.1
+        uses: actions/cache@v4
         with:
           path: '~/.npm'
           key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}

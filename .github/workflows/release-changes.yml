@@ -55,8 +55,8 @@ jobs:
         run: find . -type f -name "*pom.xml" -print0 | xargs -0 sed -i "s/${{ github.event.inputs.SNAPSHOT_TAG }}/${{ github.event.inputs.RELEASE_TAG }}/g"
       - name: update Branch name in badges
         run: |
-          sed -i 's/branch=[^\&]*)]/branch=${{ env.BRANCH_NAME }}\)]/g'  README.md
-          sed -i 's/branch=[^\&]*\&/branch=${{ env.BRANCH_NAME }}\&/g'  README.md
+          sed -i 's/branch=[^\&]*)]/branch=${{ input.REPO_BRANCH }}\)]/g'  README.md
+          sed -i 's/branch=[^\&]*\&/branch=${{ input.REPO_BRANCH }}\&/g'  README.md
 
       - name: Updating the Release URL in POM
         run: |

@@ -59,6 +59,7 @@ jobs:
           echo "Updating badges in README.md to branch: ${{ inputs.REPO_BRANCH }}"
           sed -i 's/branch=[^\&]*)]/branch=${{ inputs.REPO_BRANCH }}\)]/g'  README.md
           sed -i 's/branch=[^\&]*\&/branch=${{ inputs.REPO_BRANCH }}\&/g'  README.md
+          sed -i 's/push_trigger.yml/push-trigger.yml/g' README.md
 
       # Verify the updates
       - name: Verify README Changes

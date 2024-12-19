@@ -8,23 +8,22 @@ on:
         required: true
         type: string
       REPO_BRANCH:
-        description: 'Repo branch to update (e.g., release-1.3.x )'
         required: true
         type: string
       RELEASE_TAG:
-        description: 'Tag to update'
+        description: 'tag to update'
         required: true
         type: string
       SNAPSHOT_TAG:
-        description: 'SNAPSHOT to be Replace'
+        description: 'tag to be replaced'
         required: true
         type: string
       BASE:
-        description: 'Base branch for PR'
+        description: 'base branch for PR'
         required: true
         type: string
       COMMIT_MESSAGE:
-        description: 'Commit message'
+        description: 'commit message'
         required: true
         type: string
     secrets:
@@ -54,19 +53,12 @@ jobs:
 
       - name: Mannualy changing the pom versions
         run: find . -type f -name "*pom.xml" -print0 | xargs -0 sed -i "s/${{ github.event.inputs.SNAPSHOT_TAG }}/${{ github.event.inputs.RELEASE_TAG }}/g"
-        
       - name: update Branch name in badges
         run: |
           echo "Updating badges in README.md to branch: ${{ inputs.REPO_BRANCH }}"
           sed -i 's/branch=[^\&]*)]/branch=${{ inputs.REPO_BRANCH }}\)]/g'  README.md
           sed -i 's/branch=[^\&]*\&/branch=${{ inputs.REPO_BRANCH }}\&/g'  README.md
           sed -i 's/push_trigger.yml/push-trigger.yml/g' README.md
-
-      # Verify the updates
-      - name: Verify README Changes
-        run: |
-          echo "Updated README.md:"
-          cat README.md
           
       - name: Updating the Release URL in POM
         run: |

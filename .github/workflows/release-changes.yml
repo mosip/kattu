@@ -8,22 +8,23 @@ on:
         required: true
         type: string
       REPO_BRANCH:
+        description: 'Repo branch to update (e.g., release-1.3.x )'
         required: true
         type: string
       RELEASE_TAG:
-        description: 'tag to update'
+        description: 'Tag to update'
         required: true
         type: string
       SNAPSHOT_TAG:
-        description: 'tag to be replaced'
+        description: 'SNAPSHOT to be Replace'
         required: true
         type: string
       BASE:
-        description: 'base branch for PR'
+        description: 'Base branch for PR'
         required: true
         type: string
       COMMIT_MESSAGE:
-        description: 'commit message'
+        description: 'Commit message'
         required: true
         type: string
     secrets:

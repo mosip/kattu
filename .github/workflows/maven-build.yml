@@ -115,7 +115,7 @@ jobs:
       run: |
         IFS=',' read -ra ARTIFACTS <<< "${{ inputs.MAVEN_NON_EXEC_ARTIFACTS }}"
         for ARTIFACT in "${ARTIFACTS[@]}"; do
-          artifact_path="target/${ARTIFACT}"
+          artifact_path="*/target/${ARTIFACT}"
           if [ -d "$artifact_path" ]; then
             echo "Adding directory: $artifact_path to release zip"
             zip -r ${{ inputs.BUILD_ARTIFACT }}.zip "$artifact_path"

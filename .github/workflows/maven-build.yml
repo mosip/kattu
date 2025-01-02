@@ -113,19 +113,21 @@ jobs:
     - name: Ready the springboot non-executable artifacts
       if: ${{ inputs.MAVEN_NON_EXEC_ARTIFACTS }}
       run: |
-        IFS=',' read -ra ARTIFACTS <<< "${{ inputs.MAVEN_NON_EXEC_ARTIFACTS }}"
-        for ARTIFACT in "${ARTIFACTS[@]}"; do
-          artifact_path="*/target/${ARTIFACT}"
-          if [ -d "$artifact_path" ]; then
-            echo "Adding directory: $artifact_path to release zip"
-            zip -r ${{ inputs.BUILD_ARTIFACT }}.zip "$artifact_path"
-          elif [ -f "$artifact_path" ]; then
-            echo "Adding file: $artifact_path to release zip"
-            zip -r ${{ inputs.BUILD_ARTIFACT }}.zip "$artifact_path"
-          else
-            echo "Warning: $artifact_path not found"
-          fi
-        done
+          IFS=',' read -ra ARTIFACTS <<< "${{ inputs.MAVEN_NON_EXEC_ARTIFACTS }}"
+          for ARTIFACT in "${ARTIFACTS[@]}"; do
+            # Find the artifact directory or file in the submodule/service structure
+            artifact_path=$(find . -type d -path "*/target/${ARTIFACT}" -o -type f -path "*/target/${ARTIFACT}" | head -n 1)
+            if [ -d "$artifact_path" ]; then
+              echo "Adding directory: $artifact_path to release zip"
+              zip -r ${{ inputs.BUILD_ARTIFACT }}.zip "$artifact_path"
+            elif [ -f "$artifact_path" ]; then
+              echo "Adding file: $artifact_path to release zip"
+              zip -r ${{ inputs.BUILD_ARTIFACT }}.zip "$artifact_path"
+            else
+              echo "Warning: $ARTIFACT not found in any target directory"
+            fi
+          done
+
      
     - name: Upload the springboot jars
       if: ${{ !contains(github.ref, 'master') || !contains(github.ref, 'main') }}

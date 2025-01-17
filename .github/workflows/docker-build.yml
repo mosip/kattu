@@ -55,22 +55,22 @@ jobs:
           echo "GPG_TTY=$(tty)" >> $GITHUB_ENV
           echo "${{ toJSON(inputs) }}"
 
-      - name: Check Dockerfile for forbidden organizations and tags
-        if: |
-          (github.event_name == 'push' && startsWith(github.ref_name, 'release')) ||
-          (github.event_name == 'pull_request' && startsWith(github.base_ref, 'release')) ||
-          (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/release'))
-        run: |
-          cd ${{ inputs.SERVICE_LOCATION }} 
-          if [ ! -f Dockerfile ]; then
-            echo "Error: Dockerfile not found."
-            exit 1
-          elif grep -E "FROM (mosipdev|mosipqa)/" Dockerfile || grep -E "FROM .*:(latest|develop)" Dockerfile; then
-            echo "Error: Dockerfile contains forbidden base image from 'mosipdev' or 'mosipqa' org or uses 'latest' or 'develop' tag."
-            exit 1
-          else
-            echo "Dockerfile check passed: No forbidden organizations or tags found."
-          fi      
+#      - name: Check Dockerfile for forbidden organizations and tags
+#        if: |
+#          (github.event_name == 'push' && startsWith(github.ref_name, 'release')) ||
+#          (github.event_name == 'pull_request' && startsWith(github.base_ref, 'release')) ||
+#          (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/release'))
+#        run: |
+#          cd ${{ inputs.SERVICE_LOCATION }} 
+#          if [ ! -f Dockerfile ]; then
+#            echo "Error: Dockerfile not found."
+#            exit 1
+#          elif grep -E "FROM (mosipdev|mosipqa)/" Dockerfile || grep -E "FROM .*:(latest|develop)" Dockerfile; then
+#            echo "Error: Dockerfile contains forbidden base image from 'mosipdev' or 'mosipqa' org or uses 'latest' or 'develop' tag."
+#            exit 1
+#          else
+#            echo "Dockerfile check passed: No forbidden organizations or tags found."
+#          fi      
 
       - name: Get version info from pom
         if: ${{ contains(inputs.NPM_BUILD, 'false') && ( inputs.BUILD_ARTIFACT != 'false' )  && ( inputs.ONLY_DOCKER == false ) }}

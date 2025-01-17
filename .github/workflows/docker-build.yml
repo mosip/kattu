@@ -145,3 +145,40 @@ jobs:
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} # required
         if: "${{ github.event_name != 'pull_request' && failure() }}" # Pick up events even if the job fails or is canceled.
+
+  build-docker-warning:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Check Dockerfile for forbidden organizations and tags
+        if: |
+          (github.event_name == 'push' && startsWith(github.ref_name, 'release')) ||
+          (github.event_name == 'pull_request' && startsWith(github.base_ref, 'release')) ||
+          (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/release'))
+        run: |
+          cd ${{ inputs.SERVICE_LOCATION }}
+          
+          # Check if Dockerfile exists
+          if [ ! -f Dockerfile ]; then
+            echo "Error: Dockerfile not found."
+            exit 1
+          else
+            # Search for forbidden base images or tags
+            forbidden_found=false
+            if grep -E "FROM (mosipdev|mosipqa)/" Dockerfile; then
+              echo "Error: Dockerfile contains forbidden base image from 'mosipdev' or 'mosipqa' organization."
+              forbidden_found=true
+            fi
+            if grep -E "FROM .*:(latest|develop)" Dockerfile; then
+              echo "Error: Dockerfile contains forbidden base image tag 'latest' or 'develop'."
+              forbidden_found=true
+            fi
+            if [ "$forbidden_found" = true ]; then
+              echo "Error: Dockerfile contains forbidden base images or tags."
+              exit 1
+            else
+              echo "Dockerfile check passed: No forbidden organizations or tags found."
+            fi
+          fi

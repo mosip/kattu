@@ -154,7 +154,7 @@ jobs:
           TESTFLIGHT_BETA_APP_DESCRIPTION: ${{ inputs.TESTFLIGHT_BETA_APP_DESCRIPTION }}
 
       - name: Upload artifact
-        uses: actions/Upload-artifact@4v3.1.1
+        uses: actions/Upload-artifact@v4
         with:
           name: ${{ inputs.IOS_ARTIFACT_NAME }}
           path: ${{ inputs.IOS_ARTIFACT_PATH }}
@@ -162,7 +162,7 @@ jobs:
 
       - name: Upload Runner Log on Failure
         if: failure()
-        uses: actions/Upload-artifact@4v3.1.1
+        uses: actions/Upload-artifact@v4
         with:
           name: runner-log
           path: /Users/runner/Library/Logs/gym/

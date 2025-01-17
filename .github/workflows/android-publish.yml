@@ -177,7 +177,7 @@ jobs:
           CREDENTIAL_REGISTRY_EDIT: ${{ inputs.ALLOW_ENV_EDIT }}
           
       - name: Upload Artifact to Actions
-        uses: actions/Upload-artifact@4v3.1.1
+        uses: actions/Upload-artifact@4v
         with:
           name: ${{ inputs.ANDROID_ARTIFACT_NAME }}
           path: ${{ inputs.ANDROID_ARTIFACT_PATH }}

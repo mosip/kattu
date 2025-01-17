@@ -81,7 +81,7 @@ jobs:
           find -name '*.apk' -type f  -exec zip ${{ inputs.BUILD_ARTIFACT }}.zip {} +
 
       - name: Upload Artifact
-        uses: actions/Upload-artifact@v4
+        uses: actions/upload-artifact@4v
         with:
           name: ${{ inputs.BUILD_ARTIFACT }}
           path: ${{ inputs.BUILD_ARTIFACT }}.zip

@@ -38,7 +38,7 @@ jobs:
            mvn clean test -DtestngXmlFile="TestNg.xml"
         
       - name: Save test reports
-        uses: actions/upload-artifact@v3
+        uses: actions/Upload-artifact@4v3
         if: success() || failure()
         with:
           name: test-reports

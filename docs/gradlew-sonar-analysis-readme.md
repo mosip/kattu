@@ -11,7 +11,6 @@ This workflow is designed to perform the following tasks:
 
 This workflow accepts the following inputs:
 - `SERVICE_LOCATION`: The location of the service or project.
-- `ANDROID_LOCATION`: The location of the Android project within the service.
 - `SONAR_URL`: (Optional) The URL of the Sonar server (default: https://sonarcloud.io).
 - `PROJECT_KEY`: (Optional) The key of the Sonar project (default: "mosip_${{ github.event.repository.name }}").
 - `PROJECT_NAME`: (Optional) The name of the Sonar project (default: "${{ github.event.repository.name }").
@@ -26,9 +25,9 @@ This workflow requires the following secrets to be set in your GitHub repository
 
 ## Example Usage
 
-Here is an example workflow that uses the `Sonar Analysis via Gradlew` workflow:
+Here is an example workflow that uses the `Sonar Analysis via Gradle` workflow:
 ```yaml
-name: Gradlew sonar-analysis
+name: Gradle sonar-analysis
 on:
   release:
     types: [published]
@@ -39,7 +38,7 @@ on:
       message:
         description: 'Message for manually triggering'
         required: false
-        default: 'Triggered for Updates'
+        default: 'Triggered for Sonar analysis'
         type: string
   push:
     branches:
@@ -53,8 +52,7 @@ jobs:
     needs: <app-build-job-name>
     uses: mosip/kattu/.github/workflows/gradlew-sonar-analysis.yml@master
     with:
-      SERVICE_LOCATION: 'mosip-sbi-capacitor'
-      ANDROID_LOCATION: 'android'
+      SERVICE_LOCATION: '<project-path>'
       SONAR_URL: 'https://sonarcloud.io'
       PROJECT_KEY: "mosip_${{ github.event.repository.name }}"
       PROJECT_NAME: "${{ github.event.repository.name }}"
@@ -63,3 +61,14 @@ jobs:
       SONAR_ORGANIZATION: ${{ secrets.ORG_KEY }}
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
 ```
+
+## Pre-requisites
+
+- Install sonarqube plugin in the project
+
+```kotlin
+plugins {
+    id("org.sonarqube") version "<version>"
+}
+```
+

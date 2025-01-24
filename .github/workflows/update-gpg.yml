@@ -60,11 +60,11 @@ jobs:
             echo "New users added successfully."
           fi
 
-      - name: Debugging - Show User Map After Adding Users
-        if: ${{ inputs.NEW_USERS != '' }}
-        run: |
-          echo "Showing updated user map after adding new users..."
-          cat user_map.json
+      # - name: Debugging - Show User Map After Adding Users
+      #   if: ${{ inputs.NEW_USERS != '' }}
+      #   run: |
+      #     echo "Showing updated user map after adding new users..."
+      #     cat user_map.json
 
       - name: Step 4 - Revoke Users
         if: ${{ inputs.REVOKE_GITHUB_USERS != '' }}
@@ -81,11 +81,11 @@ jobs:
             fi
           done
 
-      - name: Debugging - Show User Map After Revoking Users
-        if: ${{ inputs.REVOKE_GITHUB_USERS != '' }}
-        run: |
-          echo "Showing updated user map after revoking users..."
-          cat user_map.json
+      # - name: Debugging - Show User Map After Revoking Users
+      #   if: ${{ inputs.REVOKE_GITHUB_USERS != '' }}
+      #   run: |
+      #     echo "Showing updated user map after revoking users..."
+      #     cat user_map.json
 
       - name: Step 5 - Encrypt Updated User Map
         if: ${{ inputs.NEW_USERS != '' || inputs.REVOKE_GITHUB_USERS != '' }}

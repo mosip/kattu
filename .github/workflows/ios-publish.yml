@@ -28,6 +28,11 @@ on:
         description: "Detect Liveness"
         required: true
         type: string
+      ENABLE_AUTH:
+        description: "Enable Authentication"
+        required: true
+        default: "true"
+        type: string
       TESTFLIGHT_INTERNAL_TESTERS_GROUP:
         description: "Internal Testers Group"
         required: true
@@ -138,6 +143,8 @@ jobs:
           cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.IOS_SERVICE_LOCATION }}
           pod install
           pod install
+        env:
+          ENABLE_AUTH: ${{ inputs.ENABLE_AUTH }}
       
       - name: Update Fastlane to Latest Version
         run: |

@@ -151,7 +151,6 @@ jobs:
           brew install fastlane
 
       - name: Deploy iOS Beta to TestFlight
-        if: ${{ inputs.ENABLE_AUTH == 'true' }}
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.IOS_SERVICE_LOCATION }}
           ${{ inputs.SCRIPT_NAME }}

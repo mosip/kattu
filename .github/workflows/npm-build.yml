@@ -51,6 +51,14 @@ jobs:
         echo "ZIP_DIR=lib" >> $GITHUB_ENV
         cd ${{ inputs.SERVICE_LOCATION }} && npm run build
 
+    - name: NPM Build for ESIGNET
+      env:
+       CI: false
+      if: ${{ inputs.NPM_BUILD_TYPE == 'ESIGNET' }}
+      run: |
+        echo "ZIP_DIR=build" >> $GITHUB_ENV
+        cd ${{ inputs.SERVICE_LOCATION }} && npm run build
+        
     - name: Zip Build Application
       if: ${{ !contains(github.ref, 'master') || !contains(github.ref, 'main') }}
       run: cd ${{ inputs.SERVICE_LOCATION }} && zip -r ${{ inputs.BUILD_ARTIFACT }}.zip ${{ env.ZIP_DIR }}

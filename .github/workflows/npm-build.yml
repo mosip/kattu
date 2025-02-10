@@ -6,7 +6,7 @@ on:
       BUILD_ARTIFACT:
         required: true
         type: string
-      ZIP-DIR:
+      ZIP_DIR:
         required: false
         type: string
       SERVICE_LOCATION:

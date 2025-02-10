@@ -21,6 +21,9 @@ on:
         required: false
         type: boolean
         default: false
+      SQUASH_LAYERS:
+        required: false
+        type: string   
 
     secrets:
       RELEASE_DOCKER_HUB:
@@ -47,6 +50,9 @@ jobs:
         with:
           name: ${{ inputs.BUILD_ARTIFACT }}
           path: ./
+
+      - name: Install docker-squash
+        run: pip install docker-squash     
 
       - name: Setup branch and env
         run: |
@@ -135,7 +141,13 @@ jobs:
           fi
           echo IMAGE_ID=$IMAGE_ID
           echo VERSION=$VERSION
-          docker tag $SERVICE_NAME $IMAGE_ID:$VERSION
+          if [[ -z "${{ inputs.SQUASH_LAYERS }}" ]]; then
+            echo "No squash layer input provided, using standard tagging and push"
+            docker tag $SERVICE_NAME $IMAGE_ID:$VERSION
+          else
+            echo "Squashing image before push..."
+            docker-squash -f ${{ inputs.SQUASH_LAYERS }} -t $IMAGE_ID:$VERSION $SERVICE_NAME
+          fi
           docker push $IMAGE_ID:$VERSION
 
       - uses: 8398a7/action-slack@v3

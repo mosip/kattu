@@ -6,6 +6,9 @@ on:
       BUILD_ARTIFACT:
         required: true
         type: string
+      ZIP-DIR:
+        required: false
+        type: string
       SERVICE_LOCATION:
         required: true
         type: string
@@ -46,17 +49,11 @@ jobs:
       run: cd ${{ inputs.SERVICE_LOCATION }} && npm run-script build -- --prod --base-href . --output-path=dist
 
     - name: NPM Build for BOB
-      if: ${{ inputs.NPM_BUILD_TYPE == 'BOB' }}
-      run: |
-        echo "ZIP_DIR=lib" >> $GITHUB_ENV
-        cd ${{ inputs.SERVICE_LOCATION }} && npm run build
-
-    - name: NPM Build for ESIGNET
       env:
        CI: false
-      if: ${{ inputs.NPM_BUILD_TYPE == 'ESIGNET' }}
+      if: ${{ inputs.NPM_BUILD_TYPE == 'BOB' }}
       run: |
-        echo "ZIP_DIR=build" >> $GITHUB_ENV
+        echo "ZIP_DIR=${{ inputs.ZIP_DIR }}" >> $GITHUB_ENV
         cd ${{ inputs.SERVICE_LOCATION }} && npm run build
         
     - name: Zip Build Application

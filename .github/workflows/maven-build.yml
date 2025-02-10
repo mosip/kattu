@@ -9,6 +9,9 @@ on:
       BUILD_ARTIFACT:
         required: true
         type: string
+      MAVEN_NON_EXEC_ARTIFACTS:
+        required: false
+        type: string 
     secrets:
       OSSRH_USER:
         required: true
@@ -78,6 +81,19 @@ jobs:
     - name: Build check for sign plugin
       run: cd ${{ inputs.SERVICE_LOCATION }} && xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:build/s:plugins/s:plugin[s:groupId='org.apache.maven.plugins']/s:artifactId" -nl pom.xml | grep -q "maven-gpg-plugin"
 
+    - name: Build check for name, url, and description in pom.xml
+      run: |
+        cd ${{ inputs.SERVICE_LOCATION }}
+        echo "Checking for project name in pom.xml"
+        xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:name" -nl pom.xml | grep -q "."
+        echo "Project name found"
+        echo "Checking for project URL in pom.xml"
+        xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:url" -nl pom.xml | grep -q "."
+        echo "Project url found"
+        echo "Checking for project description in pom.xml"
+        xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:description" -nl pom.xml | grep -q "."
+        echo "Project description found"
+
     - name: Validate pom.xml & settings.xml via xmllint
       run: |
         find ${{ inputs.SERVICE_LOCATION }} -type f -name pom.xml | while read -r F; do
@@ -88,11 +104,25 @@ jobs:
     - name: Build with Maven
       run: cd ${{ inputs.SERVICE_LOCATION }} && mvn -U -B package -Dmaven.wagon.http.retryHandler.count=2 --file pom.xml -s $GITHUB_WORKSPACE/settings.xml
 
-    - name: Ready the springboot artifacts
+    - name: Ready the springboot executable artifacts
       if: ${{ !contains(github.ref, 'master') || !contains(github.ref, 'main') }}
       run: |
         ## FIND JARS & COPY ONLY EXECUTABLE JARs STORED UNDER TARGET DIRECTORY 
         find ${{ inputs.SERVICE_LOCATION }} -path '*/target/*' -name '*.jar'  -type f  -executable -exec zip ${{ inputs.BUILD_ARTIFACT }}.zip {} +
+
+    - name: Ready the springboot non-executable artifacts
+      if: ${{ inputs.MAVEN_NON_EXEC_ARTIFACTS }}
+      run: |
+          IFS=',' read -ra ARTIFACTS <<< "${{ inputs.MAVEN_NON_EXEC_ARTIFACTS }}"
+          for ARTIFACT in "${ARTIFACTS[@]}"; do
+            artifact_path="*/target/${ARTIFACT}"
+            if ls $artifact_path 1> /dev/null 2>&1; then
+              echo "Adding non-executable ARTIFACT: $artifact_path to release zip"
+              zip -r ${{ inputs.BUILD_ARTIFACT }}.zip $artifact_path
+            else
+              echo "Warning: ARTIFACT $ARTIFACT not found"
+            fi
+          done
 
     - name: Upload the springboot jars
       if: ${{ !contains(github.ref, 'master') || !contains(github.ref, 'main') }}

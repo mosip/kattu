@@ -30,7 +30,7 @@ jobs:
           
       - name: Step 2 - Download and Decrypt Slack Users Map
         run: |
-          curl -L -o user_map.json.gpg https://raw.githubusercontent.com/bhumi46/kattu/develop/.github/git-user-map/user_map.json.gpg
+          curl -L -o user_map.json.gpg https://raw.githubusercontent.com/mosip/kattu/master/.github/git-user-map/user_map.json.gpg
           gpg --batch --yes --passphrase "${{ secrets.GPG_USER_MAP_PASSPHRASE }}" --output user_map.json --decrypt .github/git-user-map/user_map.json.gpg
           
       - name: Step 3 - Parse New Users and Skip Existing
@@ -104,4 +104,4 @@ jobs:
           git commit -m "Updated user map with new users"
           git push origin ${{ github.ref_name }}
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GH_TOKEN: ${{ secrets.ACTION_PAT }}

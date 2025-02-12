@@ -20,7 +20,6 @@ on:
       - develop
       - MOSIP*
       - release*
-      - probotcode
 
 jobs:
   deploy-to-lambda:
@@ -56,7 +55,7 @@ jobs:
       run: |
         cd probot-app
         aws lambda update-function-code \
-          --function-name TEST \
+          --function-name probot-app \
           --zip-file fileb://lambda-deployment.zip \
           --no-cli-pager \
           --query 'LastUpdateStatus' \

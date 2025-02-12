@@ -20,7 +20,7 @@ on:
       - develop
       - MOSIP*
       - release*
-      - security_patch
+      - probotcode
 
 jobs:
   deploy-to-lambda:

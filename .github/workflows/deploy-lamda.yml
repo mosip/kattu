@@ -3,8 +3,6 @@ name: Deploy to AWS Lambda (Probot App)
 on:
   release:
     types: [published]
-  pull_request:
-    types: [opened, reopened, synchronize]
   workflow_dispatch:
     inputs:
       message:

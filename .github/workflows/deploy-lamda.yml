@@ -34,11 +34,11 @@ jobs:
     
     - name: Install dependencies
       run: |
-        cd probot-app && npm ci
+        cd notifier-slackbot && npm ci
       
     - name: Zip deployment package
       run: |
-        cd probot-app
+        cd notifier-slackbot
         zip -q -r lambda-deployment.zip index.js node_modules package-lock.json package.json
     
     - name: Configure AWS Credentials
@@ -51,7 +51,7 @@ jobs:
     
     - name: Deploy to Lambda
       run: |
-        cd probot-app
+        cd notifier-slackbot
         aws lambda update-function-code \
           --function-name probot-app \
           --zip-file fileb://lambda-deployment.zip \

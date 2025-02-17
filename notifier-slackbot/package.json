@@ -1,0 +1,41 @@
+{
+  "name": "fn-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "To notify pull request (PR) raisers about CI/CD or build failures without exposing sensitive information like Slack tokens",
+  "author": "bn46",
+  "license": "ISC",
+  "homepage": "https://github.com//",
+  "keywords": [
+    "probot",
+    "github",
+    "probot-app"
+  ],
+  "scripts": {
+    "start": "probot run ./index.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@octokit/app": "^15.1.1",
+    "@octokit/rest": "^21.0.2",
+    "@octokit/webhooks": "^13.4.2",
+    "@probot/adapter-aws-lambda-serverless": "^4.0.0",
+    "@slack/web-api": "^7.8.0",
+    "axios": "^1.7.9",
+    "child_process": "^1.0.2",
+    "fs": "^0.0.1-security",
+    "node-gpg": "^0.2.0",
+    "openpgp": "^6.0.1",
+    "path": "^0.12.7",
+    "probot": "^13.4.1",
+    "util": "^0.12.5"
+  },
+  "devDependencies": {
+    "nock": "^14.0.0-beta.5",
+    "smee-client": "^2.0.4"
+  },
+  "engines": {
+    "node": ">= 18"
+  },
+  "type": "module"
+}

@@ -48,7 +48,7 @@ jobs:
             if echo "$EXISTING_USERS" | grep -q "$GITHUB_USER"; then
               echo "User $GITHUB_USER already exists. Skipping..."
             else
-              echo "Adding new user: $GITHUB_USER -> $SLACK_USER_ID"
+              echo "Adding new user: $GITHUB_USER"
               jq --arg gh_user "$GITHUB_USER" --arg slack_id "$SLACK_USER_ID" '.[$gh_user] = $slack_id' user_map.json > tmp.json && mv tmp.json user_map.json
               ADD_USER=true
             fi

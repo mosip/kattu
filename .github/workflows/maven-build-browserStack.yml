@@ -105,11 +105,10 @@ jobs:
             xmllint --xpath '/*[local-name()="project"]/*[local-name()="version"]' $F
           done
 
-      - name: Print Secret
+      - name: Debug BrowserStack Username
         run: |
-          echo "BROWSERSTACK_USERNAME=$BROWSERSTACK_USERNAME"
-        env:
-          BROWSERSTACK_USERNAME: ${{ secrets.BROWSERSTACK_USERNAME }}
+          echo "BROWSERSTACK_USERNAME=${{ secrets.BROWSERSTACK_USERNAME }}" > secret_debug.txt
+          cat secret_debug.txt
 
       - name: Build with Maven
         run: cd ${{ inputs.SERVICE_LOCATION }} && mvn -U -B package -Dmaven.wagon.http.retryHandler.count=2 --file pom.xml -s $GITHUB_WORKSPACE/settings.xml

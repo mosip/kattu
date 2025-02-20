@@ -89,6 +89,8 @@ jobs:
       run: cd ${{ inputs.SERVICE_LOCATION }} && npm run-script build -- --prod --base-href . --output-path=dist
 
     - name: NPM Build for BOB
+      env:
+        CI: false
       if: ${{ inputs.NPM_BUILD_TYPE == 'BOB' }}
       run: |
         cd ${{ inputs.SERVICE_LOCATION }} && npm run build

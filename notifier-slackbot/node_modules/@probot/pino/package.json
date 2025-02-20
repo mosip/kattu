@@ -1,0 +1,44 @@
+{
+  "name": "@probot/pino",
+  "version": "2.5.0",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "bin": {
+    "pino-probot": "./cli.js"
+  },
+  "description": "formats pino logs and sends errors to Sentry",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "scripts": {
+    "coverage": "tap --coverage-report html",
+    "test": "tap 'test/*.js'",
+    "lint": "prettier --check '**/*.js' '.github/**/*.yml' '*.md' package.json",
+    "lint:fix": "prettier --write '**/*.js' '.github/**/*.yml' '*.md' package.json"
+  },
+  "keywords": [
+    "pino"
+  ],
+  "author": "Gregor Martynus (https://twitter.com/gr2m)",
+  "license": "MIT",
+  "repository": "github:probot/pino",
+  "devDependencies": {
+    "@types/pino": "^7.0.5",
+    "pino": "^6.6.0",
+    "prettier": "^2.1.1",
+    "tap": "^16.0.1"
+  },
+  "dependencies": {
+    "@sentry/node": "^7.119.2",
+    "pino-pretty": "^6.0.0",
+    "pump": "^3.0.0",
+    "readable-stream": "^3.6.0",
+    "split2": "^4.0.0"
+  },
+  "release": {
+    "branches": [
+      "main"
+    ]
+  }
+}

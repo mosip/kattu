@@ -1,0 +1,80 @@
+name: Jira from Dependabot Creation
+
+on:
+  workflow_call:
+    inputs:
+      jira_project:
+        required: true
+        type: string
+      jira_issuetype:
+        required: false
+        type: string
+        default: "Bug"
+      jira_labels:
+        required: false
+        type: string
+        default: '["security"]'
+      jira_priority:
+        required: false
+        type: string
+        default: "Major"
+      pr_title:
+        required: true
+        type: string
+      pr_url:
+        required: true
+        type: string
+      pr_branch:
+        required: true
+        type: string
+
+    secrets:
+      JIRA_BASE_URL:
+        required: true
+      JIRA_USER_EMAIL:
+        required: true
+      JIRA_API_TOKEN:
+        required: true
+      GITHUB_TOKEN:
+        required: true
+
+jobs:
+  create_jira:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Login to Jira
+        uses: atlassian/gajira-login@v2.0.0
+        with:
+          site: ${{ secrets.JIRA_BASE_URL }}
+          email: ${{ secrets.JIRA_USER_EMAIL }}
+          api-token: ${{ secrets.JIRA_API_TOKEN }}
+
+      - name: Create Jira Issue
+        id: create
+        uses: atlassian/gajira-create@v2.0.1
+        with:
+          project: ${{ inputs.jira_project }}
+          issuetype: ${{ inputs.jira_issuetype }}
+          summary: "[${{ github.repository }}] ${{ inputs.pr_title }}"
+          description: |
+            **PR URL:** ${{ inputs.pr_url }}
+            **PR Branch:** ${{ inputs.pr_branch }}
+          fields: |
+            {
+              "labels": ${{ inputs.jira_labels }},
+              "priority": { "name": "${{ inputs.jira_priority }}" }
+            }
+
+      - name: Add Jira Issue Link to GitHub PR
+        uses: actions/github-script@v6
+        env:
+          JIRA_TICKET: ${{ steps.create.outputs.issue }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body: `✅ Jira Ticket Created: [${process.env.JIRA_TICKET}](${{ secrets.JIRA_BASE_URL }}/browse/${process.env.JIRA_TICKET})`
+            })

@@ -35,8 +35,6 @@ on:
         required: true
       JIRA_API_TOKEN:
         required: true
-      GITHUB_TOKEN:
-        required: true
 
 jobs:
   create_jira:
@@ -70,7 +68,7 @@ jobs:
         env:
           JIRA_TICKET: ${{ steps.create.outputs.issue }}
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}  # ✅ No need to pass it explicitly in workflow_call
           script: |
             github.rest.issues.createComment({
               owner: context.repo.owner,

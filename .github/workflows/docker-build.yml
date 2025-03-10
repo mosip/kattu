@@ -1,4 +1,4 @@
-name: Build docker and push image to Docker Hub
+name: Build docker with Buildx and push image to Docker Hub
 
 on:
   workflow_call:
@@ -27,7 +27,7 @@ on:
         default: false
       SQUASH_LAYERS:
         required: false
-        type: string  
+        type: string
 
     secrets:
       RELEASE_DOCKER_HUB:
@@ -164,20 +164,14 @@ jobs:
           done
         if: ${{ inputs.BASE_IMAGE_BUILD == false }}
 
-      - name: Build image
-        run: |
-          if [[ ${{ inputs.BASE_IMAGE_BUILD }} == false ]]; then
-            DOCKER_LABEL=$( echo "--build-arg COMMIT_HASH=$(git rev-parse HEAD) --build-arg COMMIT_ID=$(git rev-parse --short HEAD) --build-arg BUILD_TIME=$BUILD_TIME" )
-          fi
-          echo "DOCKER_LABEL = $DOCKER_LABEL "
-          cd ${{ inputs.SERVICE_LOCATION }}
-          docker build . --build-arg SOURCE=mosip --file Dockerfile $DOCKER_LABEL --tag ${{ env.SERVICE_NAME }}
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Log into registry
         if: "${{ github.event_name != 'pull_request' }}"
         run: echo "${{secrets.RELEASE_DOCKER_HUB}}" | docker login -u ${{secrets.ACTOR_DOCKER_HUB}} --password-stdin
 
-      - name: Push image
+      - name: Build and push images
         if: "${{ github.event_name != 'pull_request' }}"
         run: |
           IMAGE_ID=$NAMESPACE/$SERVICE_NAME
@@ -186,20 +180,57 @@ jobs:
           IMAGE_ID=$(echo $IMAGE_ID | tr '[A-Z]' '[a-z]')
           echo "push version ${{steps.getPomVersion.outputs.info}}"
           if [[ $BRANCH_NAME == master ]]; then
-          VERSION=latest
+            VERSION=latest
           else
-          VERSION=$BRANCH_NAME
+            VERSION=$BRANCH_NAME
           fi
           echo IMAGE_ID=$IMAGE_ID
           echo VERSION=$VERSION
-          if [[ -z "${{ inputs.SQUASH_LAYERS }}" ]]; then
-            echo "No squash layer input provided, using standard tagging and push"
-            docker tag $SERVICE_NAME $IMAGE_ID:$VERSION
+          
+          # Prepare Docker build arguments
+          if [[ ${{ inputs.BASE_IMAGE_BUILD }} == false ]]; then
+            DOCKER_LABEL="--build-arg COMMIT_HASH=$(git rev-parse HEAD) --build-arg COMMIT_ID=$(git rev-parse --short HEAD) --build-arg BUILD_TIME=$BUILD_TIME --build-arg SOURCE=mosip"
           else
-            echo "Squashing image before push..."
-            docker-squash -f ${{ inputs.SQUASH_LAYERS }} -t $IMAGE_ID:$VERSION $SERVICE_NAME
+            DOCKER_LABEL="--build-arg SOURCE=mosip"
           fi
-          docker push $IMAGE_ID:$VERSION
+          
+          cd ${{ inputs.SERVICE_LOCATION }}
+          
+          # Build for arm64
+          echo "Building for platform: linux/arm64"
+          docker buildx build --platform linux/arm64 --load $DOCKER_LABEL -t ${IMAGE_ID}:${VERSION}_arm64 .
+          
+          # Build for amd64
+          echo "Building for platform: linux/amd64"
+          docker buildx build --platform linux/amd64 --load $DOCKER_LABEL -t ${IMAGE_ID}:${VERSION}_amd64 .
+          
+          # Squash if needed
+          if [[ -n "${{ inputs.SQUASH_LAYERS }}" ]]; then
+            echo "Squashing arm64 image..."
+            docker-squash -f ${{ inputs.SQUASH_LAYERS }} -t ${IMAGE_ID}:${VERSION}_arm64squashed ${IMAGE_ID}:${VERSION}_arm64
+            echo "Squashing amd64 image..."
+            docker-squash -f ${{ inputs.SQUASH_LAYERS }} -t ${IMAGE_ID}:${VERSION}_amd64squashed ${IMAGE_ID}:${VERSION}_amd64
+            
+            # Push squashed images
+            docker push ${IMAGE_ID}:${VERSION}_arm64squashed
+            docker push ${IMAGE_ID}:${VERSION}_amd64squashed
+            
+            # Create and push manifest for squashed images
+            echo "Creating manifest with squashed images"
+            docker manifest create ${IMAGE_ID}:${VERSION} ${IMAGE_ID}:${VERSION}_amd64squashed ${IMAGE_ID}:${VERSION}_arm64squashed
+          else
+            # Push regular images
+            docker push ${IMAGE_ID}:${VERSION}_arm64
+            docker push ${IMAGE_ID}:${VERSION}_amd64
+            
+            # Create and push manifest for regular images
+            echo "Creating manifest with regular images"
+            docker manifest create ${IMAGE_ID}:${VERSION} ${IMAGE_ID}:${VERSION}_amd64 ${IMAGE_ID}:${VERSION}_arm64
+          fi
+          
+          # Inspect and push the manifest
+          docker manifest inspect ${IMAGE_ID}:${VERSION}
+          docker manifest push ${IMAGE_ID}:${VERSION}
 
       - uses: 8398a7/action-slack@v3
         with:

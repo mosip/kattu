@@ -35,6 +35,8 @@ on:
         required: true
       JIRA_API_TOKEN:
         required: true
+      GITHUB_TOKEN:
+        required: true
 
 jobs:
   create_jira:
@@ -42,10 +44,10 @@ jobs:
     steps:
       - name: Login to Jira
         uses: atlassian/gajira-login@v2.0.0
-        with:
-          site: ${{ secrets.JIRA_BASE_URL }}
-          email: ${{ secrets.JIRA_USER_EMAIL }}
-          api-token: ${{ secrets.JIRA_API_TOKEN }}
+        env:
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
 
       - name: Create Jira Issue
         id: create
@@ -68,7 +70,7 @@ jobs:
         env:
           JIRA_TICKET: ${{ steps.create.outputs.issue }}
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}  
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             github.rest.issues.createComment({
               owner: context.repo.owner,

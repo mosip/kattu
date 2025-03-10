@@ -64,6 +64,7 @@ jobs:
             }
 
       - name: Add Jira Issue Link to GitHub PR
+        if: github.event_name == 'pull_request'
         uses: actions/github-script@v6
         env:
           JIRA_TICKET: ${{ steps.create.outputs.issue }}

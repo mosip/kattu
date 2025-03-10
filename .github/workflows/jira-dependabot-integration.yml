@@ -35,8 +35,6 @@ on:
         required: true
       JIRA_API_TOKEN:
         required: true
-      GITHUB_TOKEN:
-        required: true
 
 jobs:
   create_jira:

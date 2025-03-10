@@ -13,7 +13,7 @@ on:
       jira_labels:
         required: false
         type: string
-        default: '["security"]'
+        default: '["Dependabot_PR"]'
       jira_priority:
         required: false
         type: string
@@ -68,7 +68,7 @@ jobs:
         env:
           JIRA_TICKET: ${{ steps.create.outputs.issue }}
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}  # ✅ No need to pass it explicitly in workflow_call
+          github-token: ${{ secrets.GITHUB_TOKEN }}  
           script: |
             github.rest.issues.createComment({
               owner: context.repo.owner,

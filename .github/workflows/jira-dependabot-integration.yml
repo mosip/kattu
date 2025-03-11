@@ -1,4 +1,4 @@
-name: Jira from Dependabot Creation
+name: Jira from Dependabot
 
 on:
   workflow_call:
@@ -59,21 +59,26 @@ jobs:
             **PR Branch:** ${{ inputs.pr_branch }}
           fields: |
             {
-              "labels": ${{ inputs.jira_labels }},
-              "priority": { "name": "Major" }
+              "labels": ${{ fromJson(inputs.jira_labels) }},
+              "priority": "${{ inputs.jira_priority }}"
             }
+        continue-on-error: true # Allow the workflow to continue even if this step fails
 
       - name: Add Jira Issue Link to GitHub PR
-        if: github.event_name == 'pull_request'
+        if: github.event.pull_request && github.event.pull_request.number
         uses: actions/github-script@v6
         env:
           JIRA_TICKET: ${{ steps.create.outputs.issue }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.payload.pull_request.number,
-              body: `✅ Jira Ticket Created: [${process.env.JIRA_TICKET}](${{ secrets.JIRA_BASE_URL }}/browse/${process.env.JIRA_TICKET})`
-            })
+            if (process.env.JIRA_TICKET) {
+              github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                body: `✅ Jira Ticket Created: [${process.env.JIRA_TICKET}](${{ secrets.JIRA_BASE_URL }}/browse/${process.env.JIRA_TICKET})`
+              })
+            } else {
+              console.log("Jira ticket creation failed, skipping comment.");
+            }

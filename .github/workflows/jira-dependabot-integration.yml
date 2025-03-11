@@ -54,16 +54,4 @@ jobs:
               "labels": ["Dependabot_PR"]
             }
 
-      - name: Add Jira Issue Link to GitHub PR
-        uses: actions/github-script@v6
-        env:
-          JIRA_TICKET: ${{ steps.create.outputs.issue }}
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.payload.pull_request.number,
-              body: `✅ Jira Ticket Created: [${process.env.JIRA_TICKET}](${{ secrets.JIRA_BASE_URL }}/browse/${process.env.JIRA_TICKET})`
-            })
+

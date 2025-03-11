@@ -1,4 +1,4 @@
-name: Jira from Dependabot
+name: Jira from Dependabot 
 
 on:
   workflow_call:
@@ -10,14 +10,6 @@ on:
         required: false
         type: string
         default: "Bug"
-      jira_labels:
-        required: false
-        type: string
-        default: '["Dependabot_PR"]'
-      jira_priority:
-        required: false
-        type: string
-        default: "Major"
       pr_title:
         required: true
         type: string
@@ -59,26 +51,20 @@ jobs:
             **PR Branch:** ${{ inputs.pr_branch }}
           fields: |
             {
-              "labels": ${{ fromJson(inputs.jira_labels) }},
-              "priority": "${{ inputs.jira_priority }}"
+              "labels": ["Dependabot_PR"],
+              "priority": { "name": "Major" }
             }
-        continue-on-error: true # Allow the workflow to continue even if this step fails
 
       - name: Add Jira Issue Link to GitHub PR
-        if: github.event.pull_request && github.event.pull_request.number
         uses: actions/github-script@v6
         env:
           JIRA_TICKET: ${{ steps.create.outputs.issue }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            if (process.env.JIRA_TICKET) {
-              github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.payload.pull_request.number,
-                body: `✅ Jira Ticket Created: [${process.env.JIRA_TICKET}](${{ secrets.JIRA_BASE_URL }}/browse/${process.env.JIRA_TICKET})`
-              })
-            } else {
-              console.log("Jira ticket creation failed, skipping comment.");
-            }
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body: `✅ Jira Ticket Created: [${process.env.JIRA_TICKET}](${{ secrets.JIRA_BASE_URL }}/browse/${process.env.JIRA_TICKET})`
+            })

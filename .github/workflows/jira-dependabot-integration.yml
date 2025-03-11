@@ -60,7 +60,7 @@ jobs:
           fields: |
             {
               "labels": ${{ inputs.jira_labels }},
-              "priority": { "name": "${{ inputs.jira_priority }}" }
+              "priority": "${{ inputs.jira_priority }}"
             }
 
       - name: Add Jira Issue Link to GitHub PR

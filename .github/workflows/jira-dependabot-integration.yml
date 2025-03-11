@@ -52,7 +52,7 @@ jobs:
           fields: |
             {
               "labels": ["Dependabot_PR"],
-              "priority": { "name": "Major" }
+              "priority": "Major"
             }
 
       - name: Add Jira Issue Link to GitHub PR

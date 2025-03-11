@@ -51,8 +51,7 @@ jobs:
             **PR Branch:** ${{ inputs.pr_branch }}
           fields: |
             {
-              "labels": ["Dependabot_PR"],
-              "priority": "Major"
+              "labels": ["Dependabot_PR"]
             }
 
       - name: Add Jira Issue Link to GitHub PR

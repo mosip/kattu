@@ -1,0 +1,57 @@
+name: Jira from Dependabot 
+
+on:
+  workflow_call:
+    inputs:
+      jira_project:
+        required: true
+        type: string
+      jira_issuetype:
+        required: false
+        type: string
+        default: "Bug"
+      pr_title:
+        required: true
+        type: string
+      pr_url:
+        required: true
+        type: string
+      pr_branch:
+        required: true
+        type: string
+
+    secrets:
+      JIRA_BASE_URL:
+        required: true
+      JIRA_USER_EMAIL:
+        required: true
+      JIRA_API_TOKEN:
+        required: true
+
+jobs:
+  create_jira:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Login to Jira
+        uses: atlassian/gajira-login@v2.0.0
+        env:
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+
+      - name: Create Jira Issue
+        id: create
+        uses: atlassian/gajira-create@v2.0.1
+        with:
+          project: ${{ inputs.jira_project }}
+          issuetype: ${{ inputs.jira_issuetype }}
+          summary: "[${{ github.repository }}] ${{ inputs.pr_title }}"
+          description: |
+            **PR URL:** ${{ inputs.pr_url }}
+            **PR Branch:** ${{ inputs.pr_branch }}
+          fields: |
+            {
+              "labels": ["Dependabot_PR"]
+            }
+
+

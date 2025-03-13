@@ -51,7 +51,5 @@ jobs:
             **PR Branch:** ${{ inputs.pr_branch }}
           fields: |
             {
-              "labels": ["Dependabot_PR"]
+              "labels": ["Dependabot_PR", "${{ github.event.repository.name }}"]
             }
-
-

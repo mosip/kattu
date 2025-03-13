@@ -56,7 +56,13 @@ jobs:
           path: ./
 
       - name: Install docker-squash
-        run: pip install docker-squash 
+        run: pip install docker-squash
+        
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3  
 
       - name: Setup branch and env
         run: |
@@ -164,42 +170,97 @@ jobs:
           done
         if: ${{ inputs.BASE_IMAGE_BUILD == false }}
 
-      - name: Build image
+      - name: Set Docker image details
         run: |
-          if [[ ${{ inputs.BASE_IMAGE_BUILD }} == false ]]; then
-            DOCKER_LABEL=$( echo "--build-arg COMMIT_HASH=$(git rev-parse HEAD) --build-arg COMMIT_ID=$(git rev-parse --short HEAD) --build-arg BUILD_TIME=$BUILD_TIME" )
+          IMAGE_ID=$NAMESPACE/$SERVICE_NAME
+          # Change all uppercase to lowercase
+          IMAGE_ID=$(echo $IMAGE_ID | tr '[A-Z]' '[a-z]')
+          
+          if [[ $BRANCH_NAME == master ]]; then
+            VERSION=latest
+          else
+            VERSION=$BRANCH_NAME
           fi
-          echo "DOCKER_LABEL = $DOCKER_LABEL "
+          
+          echo "IMAGE_ID=${IMAGE_ID}" >> $GITHUB_ENV
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "IMAGE_ID: ${IMAGE_ID}"
+          echo "VERSION: ${VERSION}"
+          
+          # Prepare Docker build args as a variable
+          DOCKER_LABEL="--build-arg SOURCE=mosip --build-arg COMMIT_HASH=$(git rev-parse HEAD) --build-arg COMMIT_ID=$(git rev-parse --short HEAD) --build-arg BUILD_TIME=$BUILD_TIME"
+          echo "DOCKER_LABEL=${DOCKER_LABEL}" >> $GITHUB_ENV
+
+      - name: Build for ARM64 and AMD64 architectures
+        run: |
           cd ${{ inputs.SERVICE_LOCATION }}
-          docker build . --build-arg SOURCE=mosip --file Dockerfile $DOCKER_LABEL --tag ${{ env.SERVICE_NAME }}
+          
+          echo "Building for ARM64 architecture..."
+          docker buildx build --platform linux/arm64 --load ${{ env.DOCKER_LABEL }} -t ${{ env.IMAGE_ID }}:${{ env.VERSION }}_arm64 .
+          
+          echo "Building for AMD64 architecture..."
+          docker buildx build --platform linux/amd64 --load ${{ env.DOCKER_LABEL }} -t ${{ env.IMAGE_ID }}:${{ env.VERSION }}_amd64 .
 
       - name: Log into registry
         if: "${{ github.event_name != 'pull_request' }}"
         run: echo "${{secrets.RELEASE_DOCKER_HUB}}" | docker login -u ${{secrets.ACTOR_DOCKER_HUB}} --password-stdin
-
-      - name: Push image
+       
+      - name: Process and push images
         if: "${{ github.event_name != 'pull_request' }}"
         run: |
-          IMAGE_ID=$NAMESPACE/$SERVICE_NAME
+          cd ${{ inputs.SERVICE_LOCATION }}
           
-          # Change all uppercase to lowercase
-          IMAGE_ID=$(echo $IMAGE_ID | tr '[A-Z]' '[a-z]')
-          echo "push version ${{steps.getPomVersion.outputs.info}}"
-          if [[ $BRANCH_NAME == master ]]; then
-          VERSION=latest
+          # Variables for the tag names
+          ARM64_TAG="${{ env.IMAGE_ID }}:${{ env.VERSION }}_arm64"
+          AMD64_TAG="${{ env.IMAGE_ID }}:${{ env.VERSION }}_amd64"
+          
+          if [[ -n "${{ inputs.SQUASH_LAYERS }}" ]]; then
+            # With squashing
+            echo "Squashing images..."
+            
+            # Squash and rename ARM64 image
+            echo "Squashing ARM64 image..."
+            ARM64_SQUASHED_TAG="${{ env.IMAGE_ID }}:${{ env.VERSION }}_arm64_squashed"
+            docker-squash -f ${{ inputs.SQUASH_LAYERS }} -t ${ARM64_SQUASHED_TAG} ${ARM64_TAG}
+            
+            # Squash and rename AMD64 image
+            echo "Squashing AMD64 image..."
+            AMD64_SQUASHED_TAG="${{ env.IMAGE_ID }}:${{ env.VERSION }}_amd64_squashed"
+            docker-squash -f ${{ inputs.SQUASH_LAYERS }} -t ${AMD64_SQUASHED_TAG} ${AMD64_TAG}
+            
+            # Push squashed images
+            echo "Pushing squashed ARM64 image..."
+            docker push ${ARM64_SQUASHED_TAG}
+            
+            echo "Pushing squashed AMD64 image..."
+            docker push ${AMD64_SQUASHED_TAG}
+            
+            # Create manifest with squashed images
+            echo "Creating manifest with squashed images..."
+            docker manifest create ${{ env.IMAGE_ID }}:${{ env.VERSION }} ${AMD64_SQUASHED_TAG} ${ARM64_SQUASHED_TAG}
           else
-          VERSION=$BRANCH_NAME
+            # Without squashing - direct push
+            echo "Pushing images without squashing..."
+            
+            # Push ARM64 image
+            echo "Pushing ARM64 image..."
+            docker push ${ARM64_TAG}
+            
+            # Push AMD64 image
+            echo "Pushing AMD64 image..."
+            docker push ${AMD64_TAG}
+            
+            # Create manifest with original images
+            echo "Creating manifest with original images..."
+            docker manifest create ${{ env.IMAGE_ID }}:${{ env.VERSION }} ${AMD64_TAG} ${ARM64_TAG}
           fi
-          echo IMAGE_ID=$IMAGE_ID
-          echo VERSION=$VERSION
-          if [[ -z "${{ inputs.SQUASH_LAYERS }}" ]]; then
-            echo "No squash layer input provided, using standard tagging and push"
-            docker tag $SERVICE_NAME $IMAGE_ID:$VERSION
-          else
-            echo "Squashing image before push..."
-            docker-squash -f ${{ inputs.SQUASH_LAYERS }} -t $IMAGE_ID:$VERSION $SERVICE_NAME
-          fi
-          docker push $IMAGE_ID:$VERSION
+          
+          # Inspect and push manifest (common for both paths)
+          echo "Inspecting manifest..."
+          docker manifest inspect ${{ env.IMAGE_ID }}:${{ env.VERSION }}
+          
+          echo "Pushing manifest..."
+          docker manifest push ${{ env.IMAGE_ID }}:${{ env.VERSION }}
 
       - uses: 8398a7/action-slack@v3
         with:

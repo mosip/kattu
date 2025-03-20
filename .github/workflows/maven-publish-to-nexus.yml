@@ -28,6 +28,11 @@ jobs:
   publish-to-nexus:
     if: ${{ !contains(github.ref, 'master') || !contains(github.ref, 'main') }}
     runs-on: ubuntu-latest
+    env:
+      OSSRH_USER: ${{ secrets.OSSRH_USER != '' && secrets.OSSRH_USER || 'default-username' }}
+      OSSRH_SECRET: ${{ secrets.OSSRH_SECRET != '' && secrets.OSSRH_SECRET || 'default-password' }}
+      OSSRH_INJI_USER: ${{ secrets.OSSRH_INJI_USER != '' && secrets.OSSRH_INJI_USER || 'default-username' }}
+      OSSRH_INJI_SECRET: ${{ secrets.OSSRH_INJI_SECRET != '' && secrets.OSSRH_INJI_SECRET || 'default-password' }}
     steps:
     - uses: actions/checkout@v3
     - name: Set up JDK 21

@@ -6,6 +6,10 @@ on:
         description: "Swift package location"
         required: true
         type: string
+      TEST_SCHEME:
+        description: "Test scheme of the swift package"
+        required: true
+        type: string
       SONAR_URL:
         required: false
         type: string
@@ -67,24 +71,34 @@ jobs:
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}
 
-           # Check if Tests directory exists and is not empty
-          if [ -d "Tests" ] && [ "$(ls -A Tests)" ]; then
-          swift test --enable-code-coverage
-
-          # Verify coverage data exists before merging
-          if [ ! -f .build/debug/codecov/default.profdata ]; then
-          echo "Error: Coverage data file (.profdata) not found!"
-          exit 1
+          # Ensure Tests directory exists (to prevent SonarQube errors)
+          if [ ! -d "Tests" ]; then
+            echo "Tests directory is missing. Creating an empty Tests directory."
+            mkdir Tests
           fi
 
-          # Merging coverage data
-          xcrun llvm-profdata merge -sparse .build/debug/codecov/default.profdata -o .build/debug/codecov/profdata.profdata
+          # Check if Tests directory exists and is not empty
+          if [ -d "Tests" ] && [ "$(ls -A Tests)" ]; then
+                
+              # Run tests
+              xcodebuild test \
+                  -scheme "${{ inputs.TEST_SCHEME }}" \
+                  -destination 'platform=iOS Simulator,OS=latest,name=iPhone 15' \
+                  -enableCodeCoverage YES
 
-          # Generating coverage report
-          xcrun --run llvm-cov show -instr-profile=.build/debug/codecov/profdata.profdata .build/debug/*PackageTests.xctest/Contents/MacOS/*PackageTests > coverage.report
+              # Find test bundle and executable
+              TEST_BUNDLE=$(find ~/Library/Developer/Xcode/DerivedData -type d -name "*.xctest" | head -n 1)
+              TEST_EXECUTABLE=$(find "$TEST_BUNDLE" -type f -perm -111 | head -n 1)
+              COVERAGE_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "Coverage.profdata" | head -n 1)
+
+              # Generate coverage report
+              xcrun llvm-cov show \
+                  -instr-profile="$COVERAGE_PATH" \
+                  "$TEST_EXECUTABLE" \
+                  -format=text > coverage.report       
           else
-          echo "No tests found. Creating empty coverage report for sonar."
-          touch coverage.report
+            echo "No tests found. Creating empty coverage report for SonarQube."
+            touch coverage.report
           fi
 
       - name: Run Sonar Analysis

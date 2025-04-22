@@ -1,4 +1,4 @@
-name: Build docker with Buildx and push image to Docker Hub
+name: Build docker and push image to Docker Hub
 
 on:
   workflow_call:
@@ -28,6 +28,10 @@ on:
       SQUASH_LAYERS:
         required: false
         type: string
+      PLATFORMS:
+        required: false
+        type: string
+        default: "linux/arm64,linux/amd64"
 
     secrets:
       RELEASE_DOCKER_HUB:
@@ -46,6 +50,7 @@ jobs:
       NAMESPACE: ${{ secrets.DEV_NAMESPACE_DOCKER_HUB }}
       SERVICE_LOCATION: ${{ inputs.SERVICE_LOCATION }}
       SERVICE_NAME: ${{ inputs.SERVICE_NAME }}
+      PLATFORMS: ${{ inputs.PLATFORMS }}
 
     steps:
       - uses: actions/checkout@v3
@@ -56,14 +61,25 @@ jobs:
           path: ./
 
       - name: Install docker-squash
-        run: pip install docker-squash 
+        run: pip install docker-squash
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+  
       - name: Setup branch and env
         run: |
           # Strip git ref prefix from version
           echo "BRANCH_NAME=$(echo ${{ github.ref }} | sed -e 's,.*/\(.*\),\1,')" >> $GITHUB_ENV
           echo "GPG_TTY=$(tty)" >> $GITHUB_ENV
           echo "${{ toJSON(inputs) }}"
+          
+          # Parse platforms into an array
+          IFS=',' read -ra PLATFORM_ARRAY <<< "$PLATFORMS"
+          echo "PLATFORM_COUNT=${#PLATFORM_ARRAY[@]}" >> $GITHUB_ENV
+          echo "Platforms to build: ${PLATFORM_ARRAY[@]} (Count: ${#PLATFORM_ARRAY[@]})"
 
       - name: Check Dockerfile for forbidden organizations and tags
         if: |
@@ -82,6 +98,7 @@ jobs:
             echo "Dockerfile check passed: No forbidden organizations or tags found."
           fi
     
+
       - name: Get version info from pom
         if: ${{ contains(inputs.NPM_BUILD, 'false') && ( inputs.BUILD_ARTIFACT != 'false' )  && ( inputs.ONLY_DOCKER == false ) }}
         id: getPomVersion
@@ -108,7 +125,22 @@ jobs:
       - name: Get current date
         run: echo "BUILD_TIME=$(date +'%Y-%m-%d-%H-%M-%S')"  >> $GITHUB_ENV
 
+      - name: Build check for Docker label
+        if: ${{ inputs.BASE_IMAGE_BUILD == false }}
+        run: |
+          cd ${{ inputs.SERVICE_LOCATION }}
+          for layer in  ARG\\s+SOURCE ARG\\s+COMMIT_HASH ARG\\s+COMMIT_ID ARG\\s+BUILD_TIME LABEL\\s+source=\\$\\{SOURCE\\} LABEL\\s+commit_hash=\\$\\{COMMIT_HASH\\} LABEL\\s+commit_id=\\$\\{COMMIT_ID\\} LABEL\\s+build_time=\\$\\{BUILD_TIME\\}; do
+            layer_count=$( grep -Ev '^$' Dockerfile | grep -Ec "$layer" || true);
+          
+            if [[ $layer_count -ne 1 ]]; then
+              dlayer=$( echo $layer | sed -E 's/\\s\+/ /g' | sed -E 's/\\//g' )
+              echo "Docker layer : \"$dlayer\" not found; EXITING";
+              exit 1;
+            fi
+          done
+          
       - name: Check Dockerfile for 'mosip' user definition
+        if: ${{ inputs.BASE_IMAGE_BUILD == false }}
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}
           DOCKERFILES=$(git ls-files | grep -w "Dockerfile")
@@ -118,13 +150,13 @@ jobs:
             "ARG\s+container_user_group=mosip"
             "ARG\s+container_user_uid=1001"
             "ARG\s+container_user_gid=1001"
-            "ENV\s+container_user=${container_user}
-            "ENV\s+container_user_group=\\\${container_user_group}
-            "ENV\s+container_user_uid=\\\${container_user_uid}
-            "ENV\s+container_user_gid=\\\${container_user_gid}
-            "WORKDIR\s+/home/\\\${container_user}"
-            "chown\s+-R\s+\\\${container_user}:\\\${container_user}\s+/home/\\\${container_user}"
-            "USER\s+\\\${container_user_uid}:\\\${container_user_gid}"
+            "ENV\s+container_user=\${container_user}"
+            "ENV\s+container_user_group=\${container_user_group}"
+            "ENV\s+container_user_uid=\${container_user_uid}"
+            "ENV\s+container_user_gid=\${container_user_gid}"
+            "WORKDIR\s+/home/\${container_user}"
+            "chown\s+-R\s+\${container_user}:\${container_user}\s+/home/\${container_user}"
+            "USER\s+\${container_user_uid}:\${container_user_gid}"
           )
 
           for FILE in $DOCKERFILES; do
@@ -138,41 +170,8 @@ jobs:
               fi
             done
           done
-        if: ${{ inputs.BASE_IMAGE_BUILD == false }}
-
-      - name: Build check for Docker datetime & git commit labels
-        run: |
-          cd ${{ inputs.SERVICE_LOCATION }}
-           chk_layer=( "ARG\\s+SOURCE"
-                       "ARG\\s+COMMIT_HASH"
-                       "ARG\\s+COMMIT_ID"
-                       "ARG\\s+BUILD_TIME"
-                       "LABEL\\s+source=\\\${SOURCE}"
-                       "LABEL\\s+commit_hash=\\\${COMMIT_HASH}"
-                       "LABEL\\s+commit_id=\\\${COMMIT_ID}" 
-                       "LABEL\\s+build_time=\\\${BUILD_TIME}"
-          )
           
-          for layer in "${chk_layer[@]}"; do
-            layer_count=$( grep -Ev '^$' Dockerfile | grep -Ec "$layer" || true);
-          
-            if [[ $layer_count -ne 1 ]]; then
-              dlayer=$( echo $layer | sed -E 's/\\s\+/ /g' | sed -E 's/\\//g' )
-              echo "Docker layer : \"$dlayer\" not found; EXITING";
-              exit 1;
-            fi
-          done
-        if: ${{ inputs.BASE_IMAGE_BUILD == false }}
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log into registry
-        if: "${{ github.event_name != 'pull_request' }}"
-        run: echo "${{secrets.RELEASE_DOCKER_HUB}}" | docker login -u ${{secrets.ACTOR_DOCKER_HUB}} --password-stdin
-
-      - name: Build and push images
-        if: "${{ github.event_name != 'pull_request' }}"
+      - name: Set Docker image details
         run: |
           IMAGE_ID=$NAMESPACE/$SERVICE_NAME
           
@@ -180,57 +179,111 @@ jobs:
           IMAGE_ID=$(echo $IMAGE_ID | tr '[A-Z]' '[a-z]')
           echo "push version ${{steps.getPomVersion.outputs.info}}"
           if [[ $BRANCH_NAME == master ]]; then
-            VERSION=latest
+          VERSION=latest
           else
-            VERSION=$BRANCH_NAME
+          VERSION=$BRANCH_NAME
           fi
           echo IMAGE_ID=$IMAGE_ID
           echo VERSION=$VERSION
           
           # Prepare Docker build arguments
           if [[ ${{ inputs.BASE_IMAGE_BUILD }} == false ]]; then
-            DOCKER_LABEL="--build-arg COMMIT_HASH=$(git rev-parse HEAD) --build-arg COMMIT_ID=$(git rev-parse --short HEAD) --build-arg BUILD_TIME=$BUILD_TIME --build-arg SOURCE=mosip"
+            DOCKER_LABEL="--build-arg SOURCE=mosip --build-arg COMMIT_HASH=$(git rev-parse HEAD) --build-arg COMMIT_ID=$(git rev-parse --short HEAD) --build-arg BUILD_TIME=$BUILD_TIME"
           else
             DOCKER_LABEL="--build-arg SOURCE=mosip"
           fi
-          
+          echo "DOCKER_LABEL=${DOCKER_LABEL}" >> $GITHUB_ENV
+          echo "IMAGE_ID=${IMAGE_ID}" >> $GITHUB_ENV
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+
+      - name: Build Docker images
+        run: |
           cd ${{ inputs.SERVICE_LOCATION }}
           
-          # Build for arm64
-          echo "Building for platform: linux/arm64"
-          docker buildx build --platform linux/arm64 --load $DOCKER_LABEL -t ${IMAGE_ID}:${VERSION}_arm64 .
+          # Split platforms string into array
+          IFS=',' read -ra PLATFORMS <<< "$PLATFORMS"
+          PLATFORMS_COUNT=${#PLATFORMS[@]}
+          echo "Building for $PLATFORMS_COUNT platform(s): ${PLATFORMS[@]}"
           
-          # Build for amd64
-          echo "Building for platform: linux/amd64"
-          docker buildx build --platform linux/amd64 --load $DOCKER_LABEL -t ${IMAGE_ID}:${VERSION}_amd64 .
-          
-          # Squash if needed
-          if [[ -n "${{ inputs.SQUASH_LAYERS }}" ]]; then
-            echo "Squashing arm64 image..."
-            docker-squash -f ${{ inputs.SQUASH_LAYERS }} -t ${IMAGE_ID}:${VERSION}_arm64squashed ${IMAGE_ID}:${VERSION}_arm64
-            echo "Squashing amd64 image..."
-            docker-squash -f ${{ inputs.SQUASH_LAYERS }} -t ${IMAGE_ID}:${VERSION}_amd64squashed ${IMAGE_ID}:${VERSION}_amd64
-            
-            # Push squashed images
-            docker push ${IMAGE_ID}:${VERSION}_arm64squashed
-            docker push ${IMAGE_ID}:${VERSION}_amd64squashed
-            
-            # Create and push manifest for squashed images
-            echo "Creating manifest with squashed images"
-            docker manifest create ${IMAGE_ID}:${VERSION} ${IMAGE_ID}:${VERSION}_amd64squashed ${IMAGE_ID}:${VERSION}_arm64squashed
+          # Check if this is a single platform build
+          if [[ $PLATFORMS_COUNT -eq 1 ]]; then
+            echo "Single platform build for ${PLATFORMS[0]}"
+            docker buildx build --platform ${PLATFORMS[0]} --load ${{ env.DOCKER_LABEL }} -t ${{ env.IMAGE_ID }}:${{ env.VERSION }} .
           else
-            # Push regular images
-            docker push ${IMAGE_ID}:${VERSION}_arm64
-            docker push ${IMAGE_ID}:${VERSION}_amd64
-            
-            # Create and push manifest for regular images
-            echo "Creating manifest with regular images"
-            docker manifest create ${IMAGE_ID}:${VERSION} ${IMAGE_ID}:${VERSION}_amd64 ${IMAGE_ID}:${VERSION}_arm64
+            echo "Multi-platform build"
+            # Build for each platform separately
+            for PLATFORM in "${PLATFORMS[@]}"; do
+              PLATFORM_TAG=$(echo $PLATFORM | tr '/' '_')
+              echo "Building for $PLATFORM architecture..."
+              docker buildx build --platform $PLATFORM --load ${{ env.DOCKER_LABEL }} -t ${{ env.IMAGE_ID }}:${{ env.VERSION }}_$PLATFORM_TAG .
+            done
           fi
+
+      - name: Log into registry
+        if: "${{ github.event_name != 'pull_request' }}"
+        run: echo "${{secrets.RELEASE_DOCKER_HUB}}" | docker login -u ${{secrets.ACTOR_DOCKER_HUB}} --password-stdin
+
+      - name: Process and push Docker images
+        if: "${{ github.event_name != 'pull_request' }}"
+        run: |
+          cd ${{ inputs.SERVICE_LOCATION }}
           
-          # Inspect and push the manifest
-          docker manifest inspect ${IMAGE_ID}:${VERSION}
-          docker manifest push ${IMAGE_ID}:${VERSION}
+          # Split platforms string into array
+          IFS=',' read -ra PLATFORMS <<< "$PLATFORMS"
+          PLATFORMS_COUNT=${#PLATFORMS[@]}
+          
+          # Single platform case - simplified flow
+          if [[ $PLATFORMS_COUNT -eq 1 ]]; then
+            echo "Processing single platform image for ${PLATFORMS[0]}"
+            if [[ -z "${{ inputs.SQUASH_LAYERS }}" ]]; then
+              echo "No squash layer input provided, using standard push"
+            else
+              echo "Squashing image before push..."
+              docker-squash -f ${{ inputs.SQUASH_LAYERS }} -t ${{ env.IMAGE_ID }}:${{ env.VERSION }} ${{ env.IMAGE_ID }}:${{ env.VERSION }}
+            fi
+            docker push ${{ env.IMAGE_ID }}:${{ env.VERSION }}
+          else
+            # Multi-platform case
+            echo "Processing multi-platform images"
+            MANIFEST_TAGS=""
+            
+            for PLATFORM in "${PLATFORMS[@]}"; do
+              PLATFORM_TAG=$(echo $PLATFORM | tr '/' '_')
+              TAG="${{ env.IMAGE_ID }}:${{ env.VERSION }}_$PLATFORM_TAG"
+              
+              if [[ -n "${{ inputs.SQUASH_LAYERS }}" ]]; then
+                # Squash image
+                echo "Squashing $PLATFORM image..."
+                SQUASHED_TAG="${{ env.IMAGE_ID }}:${{ env.VERSION }}_${PLATFORM_TAG}_squashed"
+                docker-squash -f ${{ inputs.SQUASH_LAYERS }} -t ${SQUASHED_TAG} ${TAG}
+                
+                # Push squashed image
+                echo "Pushing squashed $PLATFORM image..."
+                docker push ${SQUASHED_TAG}
+                
+                # Add to manifest
+                MANIFEST_TAGS="$MANIFEST_TAGS ${SQUASHED_TAG}"
+              else
+                # Push without squashing
+                echo "Pushing $PLATFORM image without squashing..."
+                docker push ${TAG}
+                
+                # Add to manifest
+                MANIFEST_TAGS="$MANIFEST_TAGS ${TAG}"
+              fi
+            done
+            
+            # Create manifest with all images
+            echo "Creating manifest with images: $MANIFEST_TAGS"
+            docker manifest create ${{ env.IMAGE_ID }}:${{ env.VERSION }} $MANIFEST_TAGS
+            
+            # Inspect and push manifest
+            echo "Inspecting manifest..."
+            docker manifest inspect ${{ env.IMAGE_ID }}:${{ env.VERSION }}
+            
+            echo "Pushing manifest..."
+            docker manifest push ${{ env.IMAGE_ID }}:${{ env.VERSION }}
+          fi
 
       - uses: 8398a7/action-slack@v3
         with:

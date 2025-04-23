@@ -138,6 +138,37 @@ jobs:
             fi
           done
           
+      # - name: Check Dockerfile for 'mosip' user definition
+      #   if: ${{ inputs.BASE_IMAGE_BUILD == false }}
+      #   run: |
+      #     cd ${{ inputs.SERVICE_LOCATION }}
+      #     DOCKERFILES=$(git ls-files | grep -w "Dockerfile")
+      
+      #     chk_layer=(
+      #       "ARG[[:space:]]+container_user=mosip"
+      #       "ARG[[:space:]]+container_user_group=mosip"
+      #       "ARG[[:space:]]+container_user_uid=1001"
+      #       "ARG[[:space:]]+container_user_gid=1001"
+      #       "ENV[[:space:]]+container_user=[\"']?\\\${container_user}[\"']?"
+      #       "ENV[[:space:]]+container_user_group=[\"']?\\\${container_user_group}[\"']?"
+      #       "ENV[[:space:]]+container_user_uid=[\"']?\\\${container_user_uid}[\"']?"
+      #       "ENV[[:space:]]+container_user_gid=[\"']?\\\${container_user_gid}[\"']?"
+      #       "WORKDIR[[:space:]]+/home/\\\${container_user}"
+      #       "chown[[:space:]]+-R[[:space:]]+\\\${container_user}:\\\${container_user}[[:space:]]+/home/\\\${container_user}"
+      #       "USER[[:space:]]+\\\${container_user_uid}:\\\${container_user_gid}"
+      #     )
+      
+      #     for FILE in $DOCKERFILES; do
+      #       echo "🔍 Checking $FILE..."
+      #       for layer in "${chk_layer[@]}"; do
+      #         layer_count=$(grep -Ev '^$' "$FILE" | grep -Ec "$layer" || true)
+      #         if [[ $layer_count -ne 1 ]]; then
+      #           dlayer=$(echo "$layer" | sed -E 's/\\{/{/g; s/\\}/}/g; s/\\\$/$/g; s/\\//g; s/\[[:space:]\]+/ /g')
+      #           echo "❌ Docker layer: \"$dlayer\" not found in $FILE; EXITING"
+      #           exit 1
+      #         fi
+      #       done
+      #     done
       - name: Check Dockerfile for 'mosip' user definition
         if: ${{ inputs.BASE_IMAGE_BUILD == false }}
         run: |
@@ -159,12 +190,15 @@ jobs:
           )
       
           for FILE in $DOCKERFILES; do
-            echo "🔍 Checking $FILE..."
+            echo "Checking $FILE..."
             for layer in "${chk_layer[@]}"; do
               layer_count=$(grep -Ev '^$' "$FILE" | grep -Ec "$layer" || true)
-              if [[ $layer_count -ne 1 ]]; then
-                dlayer=$(echo "$layer" | sed -E 's/\\{/{/g; s/\\}/}/g; s/\\\$/$/g; s/\\//g; s/\[[:space:]\]+/ /g')
-                echo "❌ Docker layer: \"$dlayer\" not found in $FILE; EXITING"
+              dlayer=$(echo "$layer" | sed -E 's/\\{/{/g; s/\\}/}/g; s/\\\$/$/g; s/\\//g; s/\[[:space:]\]+/ /g')
+      
+              if [[ $layer_count -ge 1 ]]; then
+                echo "Found Docker layer: \"$dlayer\" in $FILE"
+              else
+                echo "Docker layer: \"$dlayer\" not found in $FILE; EXITING"
                 exit 1
               fi
             done

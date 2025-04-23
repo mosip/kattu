@@ -138,37 +138,39 @@ jobs:
             fi
           done
           
-      - name: Check Dockerfile for 'mosip' user definition
-        if: ${{ inputs.BASE_IMAGE_BUILD == false }}
-        run: |
-          cd ${{ inputs.SERVICE_LOCATION }}
-          DOCKERFILES=$(git ls-files | grep -w "Dockerfile")
+- name: Check Dockerfile for 'mosip' user definition
+  if: ${{ inputs.BASE_IMAGE_BUILD == false }}
+  run: |
+    cd ${{ inputs.SERVICE_LOCATION }}
+    DOCKERFILES=$(git ls-files | grep -w "Dockerfile")
 
-          chk_layer=(
-            "ARG\s+container_user=mosip"
-            "ARG\s+container_user_group=mosip"
-            "ARG\s+container_user_uid=1001"
-            "ARG\s+container_user_gid=1001"
-            "ENV\s+container_user=\${container_user}"
-            "ENV\s+container_user_group=\${container_user_group}"
-            "ENV\s+container_user_uid=\${container_user_uid}"
-            "ENV\s+container_user_gid=\${container_user_gid}"
-            "WORKDIR\s+/home/\${container_user}"
-            "chown\s+-R\s+\${container_user}:\${container_user}\s+/home/\${container_user}"
-            "USER\s+\${container_user_uid}:\${container_user_gid}"
-          )
+    chk_layer=(
+      "ARG\s+container_user=mosip"
+      "ARG\s+container_user_group=mosip"
+      "ARG\s+container_user_uid=1001"
+      "ARG\s+container_user_gid=1001"
+      "ENV\s+container_user=(\"?\${container_user}\"?)"
+      "ENV\s+container_user_group=(\"?\${container_user_group}\"?)"
+      "ENV\s+container_user_uid=(\"?\${container_user_uid}\"?)"
+      "ENV\s+container_user_gid=(\"?\${container_user_gid}\"?)"
+      "WORKDIR\s+/home/\${container_user}"
+      "chown\s+-R\s+\${container_user}:\${container_user}\s+/home/\${container_user}"
+      "USER\s+\${container_user_uid}:\${container_user_gid}"
+    )
 
-          for FILE in $DOCKERFILES; do
-            for layer in "${chk_layer[@]}"; do
-              layer_count=$(grep -Ev '^$' "$FILE" | grep -Ec "$layer" || true)
-          
-              if [[ $layer_count -ne 1 ]]; then
-                dlayer=$(echo $layer | sed -E 's/\\s\+/ /g' | sed -E 's/\\//g')
-                echo "Docker layer: \"$dlayer\" not found in $FILE; EXITING"
-                exit 1
-              fi
-            done
-          done
+    for FILE in $DOCKERFILES; do
+      echo "Checking $FILE..."
+      for layer in "${chk_layer[@]}"; do
+        layer_count=$(grep -Ev '^$' "$FILE" | grep -Ec "$layer" || true)
+
+        if [[ $layer_count -ne 1 ]]; then
+          dlayer=$(echo $layer | sed -E 's/\\s\+/ /g' | sed -E 's/\\//g' | sed -E 's/\(\.\*\)\??//g')
+          echo "❌ Docker layer: \"$dlayer\" not found in $FILE; EXITING"
+          exit 1
+        fi
+      done
+    done
+
           
       - name: Set Docker image details
         run: |

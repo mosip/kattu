@@ -174,7 +174,6 @@ jobs:
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}
           DOCKERFILES=$(git ls-files | grep -w "Dockerfile")
-      
           chk_layer=(
             "ARG[[:space:]]+container_user=mosip"
             "ARG[[:space:]]+container_user_group=mosip"
@@ -188,21 +187,26 @@ jobs:
             "chown[[:space:]]+-R[[:space:]]+\\\${container_user}:\\\${container_user}[[:space:]]+/home/\\\${container_user}"
             "USER[[:space:]]+\\\${container_user_uid}:\\\${container_user_gid}"
           )
-      
+          
           for FILE in $DOCKERFILES; do
-            echo "Checking $FILE..."
+            echo "🔍 Checking $FILE..."
             for layer in "${chk_layer[@]}"; do
               layer_count=$(grep -Ev '^$' "$FILE" | grep -Ec "$layer" || true)
-              dlayer=$(echo "$layer" | sed -E 's/\\{/{/g; s/\\}/}/g; s/\\\$/$/g; s/\\//g; s/\[[:space:]\]+/ /g')
-      
+          
+              # Clean up regex for readable output
+              dlayer=$(echo "$layer" | sed -E 's/\\\$/\$/g; s/\\\{/\\{/g; s/\\\}/\\}/g; s/\\//g; s/\[[:space:]\]+/ /g')
+          
               if [[ $layer_count -ge 1 ]]; then
-                echo "Found Docker layer: \"$dlayer\" in $FILE"
+                echo "✅ Found Docker layer: \"$dlayer\" in $FILE"
               else
-                echo "Docker layer: \"$dlayer\" not found in $FILE; EXITING"
+                echo "❌ Docker layer: \"$dlayer\" not found in $FILE; EXITING"
                 exit 1
               fi
             done
           done
+          
+          echo "🎉 All required Dockerfile layers are present!"
+
           
       - name: Set Docker image details
         run: |

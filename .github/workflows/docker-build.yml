@@ -98,7 +98,6 @@ jobs:
             echo "Dockerfile check passed: No forbidden organizations or tags found."
           fi
     
-
       - name: Get version info from pom
         if: ${{ contains(inputs.NPM_BUILD, 'false') && ( inputs.BUILD_ARTIFACT != 'false' )  && ( inputs.ONLY_DOCKER == false ) }}
         id: getPomVersion
@@ -169,7 +168,7 @@ jobs:
       #           exit 1
       #         fi
       #       done
-          done
+      #     done
           
       - name: Set Docker image details
         run: |

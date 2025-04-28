@@ -12,7 +12,7 @@ on:
       BUILD_ARTIFACT:
         required: false
         type: string
-        default: false
+        default: "false"
       NPM_BUILD:
         required: false
         type: boolean
@@ -228,68 +228,90 @@ jobs:
             done
           fi
 
+      - name: Build and optionally squash Docker images
+        id: build_images
+        run: |
+          cd ${{ inputs.SERVICE_LOCATION }}
+          IFS=',' read -ra PLATFORMS <<< "$PLATFORMS"
+          echo "Building for ${#PLATFORMS[@]} platform(s): ${PLATFORMS[@]}"
+
+          if [[ ${#PLATFORMS[@]} -eq 1 ]]; then
+            # Single-arch build
+            docker buildx build \
+              --platform ${PLATFORMS[0]} \
+              --load ${{ env.DOCKER_LABEL }} \
+              -t ${{ env.IMAGE_ID }}:${{ env.VERSION }} .
+
+            if [[ -n "${{ inputs.SQUASH_LAYERS }}" ]]; then
+              echo "Squashing single-arch image..."
+              docker-squash \
+                -f ${{ inputs.SQUASH_LAYERS }} \
+                -t ${{ env.IMAGE_ID }}:${{ env.VERSION }} \
+                ${{ env.IMAGE_ID }}:${{ env.VERSION }}
+            fi
+
+          else
+            # Multi-arch build
+            for PLATFORM in "${PLATFORMS[@]}"; do
+              PLATFORM_TAG=${PLATFORM//\//_}
+              echo "Building for $PLATFORM..."
+              docker buildx build \
+                --platform $PLATFORM \
+                --load ${{ env.DOCKER_LABEL }} \
+                -t ${{ env.IMAGE_ID }}:${{ env.VERSION }}_$PLATFORM_TAG .
+
+              if [[ -n "${{ inputs.SQUASH_LAYERS }}" ]]; then
+                echo "Squashing $PLATFORM image..."
+                docker-squash \
+                  -f ${{ inputs.SQUASH_LAYERS }} \
+                  -t ${{ env.IMAGE_ID }}:${{ env.VERSION }}_${PLATFORM_TAG}_squashed \
+                  ${{ env.IMAGE_ID }}:${{ env.VERSION }}_$PLATFORM_TAG
+              fi
+            done
+          fi
+
       - name: Log into registry
         if: "${{ github.event_name != 'pull_request' }}"
-        run: echo "${{secrets.RELEASE_DOCKER_HUB}}" | docker login -u ${{secrets.ACTOR_DOCKER_HUB}} --password-stdin
+        run: |
+          echo "${{ secrets.RELEASE_DOCKER_HUB }}" \
+            | docker login \
+                -u ${{ secrets.ACTOR_DOCKER_HUB }} \
+                --password-stdin
 
-      - name: Process and push Docker images
+      - name: Push images and create manifest
         if: "${{ github.event_name != 'pull_request' }}"
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}
-          
-          # Split platforms string into array
           IFS=',' read -ra PLATFORMS <<< "$PLATFORMS"
-          PLATFORMS_COUNT=${#PLATFORMS[@]}
-          
-          # Single platform case - simplified flow
-          if [[ $PLATFORMS_COUNT -eq 1 ]]; then
-            echo "Processing single platform image for ${PLATFORMS[0]}"
-            if [[ -z "${{ inputs.SQUASH_LAYERS }}" ]]; then
-              echo "No squash layer input provided, using standard push"
-            else
-              echo "Squashing image before push..."
-              docker-squash -f ${{ inputs.SQUASH_LAYERS }} -t ${{ env.IMAGE_ID }}:${{ env.VERSION }} ${{ env.IMAGE_ID }}:${{ env.VERSION }}
-            fi
+
+          if [[ ${#PLATFORMS[@]} -eq 1 ]]; then
+            echo "Directly pushing single-arch image..."
             docker push ${{ env.IMAGE_ID }}:${{ env.VERSION }}
+
           else
-            # Multi-platform case
-            echo "Processing multi-platform images"
+            echo "Pushing multi-arch images and assembling manifest..."
             MANIFEST_TAGS=""
-            
+
             for PLATFORM in "${PLATFORMS[@]}"; do
-              PLATFORM_TAG=$(echo $PLATFORM | tr '/' '_')
-              TAG="${{ env.IMAGE_ID }}:${{ env.VERSION }}_$PLATFORM_TAG"
-              
+              PLATFORM_TAG=${PLATFORM//\//_}
+
               if [[ -n "${{ inputs.SQUASH_LAYERS }}" ]]; then
-                # Squash image
-                echo "Squashing $PLATFORM image..."
-                SQUASHED_TAG="${{ env.IMAGE_ID }}:${{ env.VERSION }}_${PLATFORM_TAG}_squashed"
-                docker-squash -f ${{ inputs.SQUASH_LAYERS }} -t ${SQUASHED_TAG} ${TAG}
-                
-                # Push squashed image
-                echo "Pushing squashed $PLATFORM image..."
-                docker push ${SQUASHED_TAG}
-                
-                # Add to manifest
-                MANIFEST_TAGS="$MANIFEST_TAGS ${SQUASHED_TAG}"
+                TAG=${{ env.IMAGE_ID }}:${{ env.VERSION }}_${PLATFORM_TAG}_squashed
               else
-                # Push without squashing
-                echo "Pushing $PLATFORM image without squashing..."
-                docker push ${TAG}
-                
-                # Add to manifest
-                MANIFEST_TAGS="$MANIFEST_TAGS ${TAG}"
+                TAG=${{ env.IMAGE_ID }}:${{ env.VERSION }}_${PLATFORM_TAG}
               fi
+
+              echo "Pushing $TAG..."
+              docker push $TAG
+              MANIFEST_TAGS="$MANIFEST_TAGS $TAG"
             done
-            
-            # Create manifest with all images
-            echo "Creating manifest with images: $MANIFEST_TAGS"
+
+            echo "Creating manifest ${{ env.IMAGE_ID }}:${{ env.VERSION }} with images:$MANIFEST_TAGS"
             docker manifest create ${{ env.IMAGE_ID }}:${{ env.VERSION }} $MANIFEST_TAGS
-            
-            # Inspect and push manifest
-            echo "Inspecting manifest..."
+
+            echo "Inspecting manifest:"
             docker manifest inspect ${{ env.IMAGE_ID }}:${{ env.VERSION }}
-            
+
             echo "Pushing manifest..."
             docker manifest push ${{ env.IMAGE_ID }}:${{ env.VERSION }}
           fi

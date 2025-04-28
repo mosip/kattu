@@ -12,7 +12,7 @@ on:
       BUILD_ARTIFACT:
         required: false
         type: string
-        default: "false"
+        default: false
       NPM_BUILD:
         required: false
         type: boolean

@@ -111,6 +111,13 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3.1.0
+
+      - name: Select Xcode 16
+        run: sudo xcode-select -s /Applications/Xcode_16.0.app
+      
+      - name: Confirm Xcode version
+        run: /usr/bin/xcodebuild -version
+      
       - uses: actions/setup-node@v3
         with:
           node-version: ${{ inputs.NODE_VERSION }}

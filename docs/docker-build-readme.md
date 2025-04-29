@@ -15,6 +15,8 @@ This workflow accepts the following inputs:
 - `BUILD_ARTIFACT` (Optional, String): The name of the build artifact.
 - `NPM_BUILD` (Optional, Boolean): Set to true if you want to build docker for NPM application.
 - `ONLY_DOCKER` (Optional, Boolean): Set to true if you only want to build the Docker image with a GitHub artifacts.
+- `SQUASH_LAYERS` (Optional, String): If provided, squashes Docker image layers before pushing.
+- `PLATFORMS` (Optional, String): Comma-separated list of platforms to build for (default: `linux/arm64,linux/amd64`).
 
 ## Secrets
 
@@ -125,3 +127,46 @@ Here is an example workflow that uses the build-dockers workflow:
         RELEASE_DOCKER_HUB: ${{ secrets.RELEASE_DOCKER_HUB }}
         SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
   ```
+* Docker build for multiple platforms with layer squashing
+  ```
+  jobs:
+  build-docker:
+    needs: <job-name>
+    strategy:
+      matrix:
+        include:
+          - SERVICE_LOCATION: '<SERVICE-LOCATION>'
+            SERVICE_NAME: '<SERVICE-NAME>'
+            PLATFORMS: 'linux/arm64,linux/amd64'
+            SQUASH_LAYERS: '60'
+      fail-fast: false
+    name: ${{ matrix.SERVICE_NAME }}
+    uses: mosip/kattu/.github/workflows/docker-build.yml@master
+    with:
+      SERVICE_LOCATION: ${{ matrix.SERVICE_LOCATION }}
+      SERVICE_NAME: ${{ matrix.SERVICE_NAME }}
+      PLATFORMS: ${{ matrix.PLATFORMS }}
+      SQUASH_LAYERS: ${{ matrix.SQUASH_LAYERS }}
+    secrets:
+      DEV_NAMESPACE_DOCKER_HUB: ${{ secrets.DEV_NAMESPACE_DOCKER_HUB }}
+      ACTOR_DOCKER_HUB: ${{ secrets.ACTOR_DOCKER_HUB }}
+      RELEASE_DOCKER_HUB: ${{ secrets.RELEASE_DOCKER_HUB }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+  ```
+
+## Multi-Platform Support
+
+The workflow supports building for multiple platforms:
+
+- **Default platforms**: `linux/arm64,linux/amd64`
+
+- **For single platform builds**:
+  - The image is built and pushed normally.
+  - If `SQUASH_LAYERS` is provided, each platform image is squashed.
+
+- **For multi-platform builds**:
+  - Each platform is built separately.
+  - Images are tagged with platform-specific tags.
+  - If `SQUASH_LAYERS` is provided, each platform image is squashed.
+  - A manifest is created containing all platform images.
+  - The manifest is pushed with the main tag.

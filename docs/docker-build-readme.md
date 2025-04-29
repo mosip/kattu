@@ -1,4 +1,3 @@
-develop
 # Build Docker and Push Image to Docker Hub
 
 ## Purpose

@@ -12,7 +12,7 @@ on:
       BUILD_ARTIFACT:
         required: false
         type: string
-        default: false
+        default: "false"
       NPM_BUILD:
         required: false
         type: boolean
@@ -31,7 +31,7 @@ on:
       PLATFORMS:
         required: false
         type: string
-        default: "linux/arm64,linux/amd64"
+        default: "linux/amd64,linux/arm64"
 
     secrets:
       RELEASE_DOCKER_HUB:
@@ -80,7 +80,7 @@ jobs:
           IFS=',' read -ra PLATFORM_ARRAY <<< "$PLATFORMS"
           echo "PLATFORM_COUNT=${#PLATFORM_ARRAY[@]}" >> $GITHUB_ENV
           echo "Platforms to build: ${PLATFORM_ARRAY[@]} (Count: ${#PLATFORM_ARRAY[@]})"
-
+          
       - name: Check Dockerfile for forbidden organizations and tags
         if: |
           (github.event_name == 'push' && startsWith(github.ref_name, 'release')) ||
@@ -134,10 +134,10 @@ jobs:
             "ARG\s+container_user_group=mosip"
             "ARG\s+container_user_uid=1001"
             "ARG\s+container_user_gid=1001"
-            "ENV\s+container_user=${container_user}
-            "ENV\s+container_user_group=\\\${container_user_group}
-            "ENV\s+container_user_uid=\\\${container_user_uid}
-            "ENV\s+container_user_gid=\\\${container_user_gid}
+            "ENV\s+container_user=\\\${container_user}"
+            "ENV\s+container_user_group=\\\${container_user_group}"
+            "ENV\s+container_user_uid=\\\${container_user_uid}"
+            "ENV\s+container_user_gid=\\\${container_user_gid}"
             "WORKDIR\s+/home/\\\${container_user}"
             "chown\s+-R\s+\\\${container_user}:\\\${container_user}\s+/home/\\\${container_user}"
             "USER\s+\\\${container_user_uid}:\\\${container_user_gid}"
@@ -180,20 +180,9 @@ jobs:
           done
         if: ${{ inputs.BASE_IMAGE_BUILD == false }}
           
-      - name: Set Docker image details
+      - name: Build Docker images
         run: |
-          IMAGE_ID=$NAMESPACE/$SERVICE_NAME
-          
-          # Change all uppercase to lowercase
-          IMAGE_ID=$(echo $IMAGE_ID | tr '[A-Z]' '[a-z]')
-          echo "push version ${{steps.getPomVersion.outputs.info}}"
-          if [[ $BRANCH_NAME == master ]]; then
-          VERSION=latest
-          else
-          VERSION=$BRANCH_NAME
-          fi
-          echo IMAGE_ID=$IMAGE_ID
-          echo VERSION=$VERSION
+          cd ${{ inputs.SERVICE_LOCATION }}
           
           # Prepare Docker build arguments
           if [[ ${{ inputs.BASE_IMAGE_BUILD }} == false ]]; then
@@ -201,13 +190,6 @@ jobs:
           else
             DOCKER_LABEL="--build-arg SOURCE=mosip"
           fi
-          echo "DOCKER_LABEL=${DOCKER_LABEL}" >> $GITHUB_ENV
-          echo "IMAGE_ID=${IMAGE_ID}" >> $GITHUB_ENV
-          echo "VERSION=${VERSION}" >> $GITHUB_ENV
-
-      - name: Build Docker images
-        run: |
-          cd ${{ inputs.SERVICE_LOCATION }}
           
           # Split platforms string into array
           IFS=',' read -ra PLATFORMS <<< "$PLATFORMS"
@@ -217,81 +199,94 @@ jobs:
           # Check if this is a single platform build
           if [[ $PLATFORMS_COUNT -eq 1 ]]; then
             echo "Single platform build for ${PLATFORMS[0]}"
-            docker buildx build --platform ${PLATFORMS[0]} --load ${{ env.DOCKER_LABEL }} -t ${{ env.IMAGE_ID }}:${{ env.VERSION }} .
+            docker buildx build --platform ${PLATFORMS[0]} --load $DOCKER_LABEL -t ${{ env.SERVICE_NAME }} .
           else
             echo "Multi-platform build"
             # Build for each platform separately
             for PLATFORM in "${PLATFORMS[@]}"; do
               PLATFORM_TAG=$(echo $PLATFORM | tr '/' '_')
               echo "Building for $PLATFORM architecture..."
-              docker buildx build --platform $PLATFORM --load ${{ env.DOCKER_LABEL }} -t ${{ env.IMAGE_ID }}:${{ env.VERSION }}_$PLATFORM_TAG .
+              docker buildx build --platform $PLATFORM --load $DOCKER_LABEL -t ${{ env.SERVICE_NAME }}:${PLATFORM_TAG} .
             done
           fi
 
       - name: Log into registry
         if: "${{ github.event_name != 'pull_request' }}"
-        run: echo "${{secrets.RELEASE_DOCKER_HUB}}" | docker login -u ${{secrets.ACTOR_DOCKER_HUB}} --password-stdin
+        run: echo "${{ secrets.RELEASE_DOCKER_HUB }}" | docker login -u ${{ secrets.ACTOR_DOCKER_HUB }} --password-stdin
 
       - name: Process and push Docker images
         if: "${{ github.event_name != 'pull_request' }}"
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}
           
+          # Set image ID and version for pushing
+          IMAGE_ID=$NAMESPACE/$SERVICE_NAME
+          
+          # Change all uppercase to lowercase
+          IMAGE_ID=$(echo $IMAGE_ID | tr '[A-Z]' '[a-z]')
+          
+          if [[ $BRANCH_NAME == master ]]; then
+            VERSION=latest
+          else
+            VERSION=$BRANCH_NAME
+          fi
+          
+          echo "IMAGE_ID=$IMAGE_ID"
+          echo "VERSION=$VERSION"
+          
           # Split platforms string into array
           IFS=',' read -ra PLATFORMS <<< "$PLATFORMS"
           PLATFORMS_COUNT=${#PLATFORMS[@]}
           
-          # Single platform case - simplified flow
+          # Single platform case
           if [[ $PLATFORMS_COUNT -eq 1 ]]; then
-            echo "Processing single platform image for ${PLATFORMS[0]}"
-            if [[ -z "${{ inputs.SQUASH_LAYERS }}" ]]; then
-              echo "No squash layer input provided, using standard push"
-            else
-              echo "Squashing image before push..."
-              docker-squash -f ${{ inputs.SQUASH_LAYERS }} -t ${{ env.IMAGE_ID }}:${{ env.VERSION }} ${{ env.IMAGE_ID }}:${{ env.VERSION }}
+            # Tag the temporary image with the final name
+            docker tag ${{ env.SERVICE_NAME }} $IMAGE_ID:$VERSION
+            
+            # Apply squashing if specified
+            if [[ -n "${{ inputs.SQUASH_LAYERS }}" ]]; then
+              echo "Squashing single platform image for ${PLATFORMS[0]}"
+              docker-squash -f ${{ inputs.SQUASH_LAYERS }} -t $IMAGE_ID:$VERSION $IMAGE_ID:$VERSION
             fi
-            docker push ${{ env.IMAGE_ID }}:${{ env.VERSION }}
+            
+            # Push the image
+            echo "Pushing single platform image for ${PLATFORMS[0]}"
+            docker push $IMAGE_ID:$VERSION
           else
             # Multi-platform case
-            echo "Processing multi-platform images"
             MANIFEST_TAGS=""
             
             for PLATFORM in "${PLATFORMS[@]}"; do
               PLATFORM_TAG=$(echo $PLATFORM | tr '/' '_')
-              TAG="${{ env.IMAGE_ID }}:${{ env.VERSION }}_$PLATFORM_TAG"
+              FINAL_TAG="$IMAGE_ID:${VERSION}_$PLATFORM_TAG"
               
+              # Tag with final name
+              docker tag ${{ env.SERVICE_NAME }}:${PLATFORM_TAG} $FINAL_TAG
+              
+              # Apply squashing if specified
               if [[ -n "${{ inputs.SQUASH_LAYERS }}" ]]; then
-                # Squash image
                 echo "Squashing $PLATFORM image..."
-                SQUASHED_TAG="${{ env.IMAGE_ID }}:${{ env.VERSION }}_${PLATFORM_TAG}_squashed"
-                docker-squash -f ${{ inputs.SQUASH_LAYERS }} -t ${SQUASHED_TAG} ${TAG}
-                
-                # Push squashed image
-                echo "Pushing squashed $PLATFORM image..."
-                docker push ${SQUASHED_TAG}
-                
-                # Add to manifest
-                MANIFEST_TAGS="$MANIFEST_TAGS ${SQUASHED_TAG}"
-              else
-                # Push without squashing
-                echo "Pushing $PLATFORM image without squashing..."
-                docker push ${TAG}
-                
-                # Add to manifest
-                MANIFEST_TAGS="$MANIFEST_TAGS ${TAG}"
+                docker-squash -f ${{ inputs.SQUASH_LAYERS }} -t $FINAL_TAG $FINAL_TAG
               fi
+              
+              # Push platform-specific image
+              echo "Pushing $PLATFORM image..."
+              docker push $FINAL_TAG
+              
+              # Add to manifest tags list
+              MANIFEST_TAGS="$MANIFEST_TAGS $FINAL_TAG"
             done
             
             # Create manifest with all images
-            echo "Creating manifest with images: $MANIFEST_TAGS"
-            docker manifest create ${{ env.IMAGE_ID }}:${{ env.VERSION }} $MANIFEST_TAGS
+            echo "Creating manifest with images:$MANIFEST_TAGS"
+            docker manifest create $IMAGE_ID:$VERSION $MANIFEST_TAGS
             
             # Inspect and push manifest
             echo "Inspecting manifest..."
-            docker manifest inspect ${{ env.IMAGE_ID }}:${{ env.VERSION }}
+            docker manifest inspect $IMAGE_ID:$VERSION
             
             echo "Pushing manifest..."
-            docker manifest push ${{ env.IMAGE_ID }}:${{ env.VERSION }}
+            docker manifest push $IMAGE_ID:$VERSION
           fi
 
       - uses: 8398a7/action-slack@v3

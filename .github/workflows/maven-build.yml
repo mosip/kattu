@@ -82,8 +82,16 @@ jobs:
         missing_plugin=()
 
         while IFS= read -r pom; do
-          if xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" \
-            -t -v "//s:project/s:build/s:plugins/s:plugin[s:groupId='pl.project13.maven' and s:artifactId='git-commit-id-plugin']/s:artifactId" -nl "$pom" \
+          # Extract the default namespace from the pom.xml
+          ns=$(xmlstarlet sel -t -v "namespace-uri(/*)" "$pom")
+          if [ -z "$ns" ]; then
+            echo "❌ Unable to determine namespace for $pom"
+            missing_plugin+=("$pom")
+            continue
+          fi
+
+          if xmlstarlet sel -N x="$ns" \
+            -t -v "//x:project/x:build/x:plugins/x:plugin[x:groupId='pl.project13.maven']/x:artifactId" -nl "$pom" \
             | grep -q "git-commit-id-plugin"; then
             echo "✅ Found git-commit-id-plugin in $pom"
             has_plugin+=("$pom")

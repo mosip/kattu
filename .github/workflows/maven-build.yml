@@ -76,7 +76,27 @@ jobs:
       run: cd ${{ inputs.SERVICE_LOCATION }} && xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:developers[1]/s:developer/s:name" -nl pom.xml | grep -icq "Mosip"
 
     - name: Build check for commit plugin
-      run: cd ${{ inputs.SERVICE_LOCATION }} && xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:build/s:plugins/s:plugin[s:groupId='pl.project13.maven']/s:artifactId" -nl pom.xml | grep -q "git-commit-id-plugin"
+      run: |
+        echo "Checking all pom.xml files for git-commit-id-plugin"
+        missing_plugins=()
+        while IFS= read -r pom; do
+          if ! xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" \
+            -t -v "//s:project/s:build/s:plugins/s:plugin[s:groupId='pl.project13.maven']/s:artifactId" -nl "$pom" \
+            | grep -q "git-commit-id-plugin"; then
+            echo "Missing git-commit-id-plugin in $pom"
+            missing_plugins+=("$pom")
+          fi
+        done < <(find . -name pom.xml)
+
+        if [ ${#missing_plugins[@]} -ne 0 ]; then
+          echo "ERROR: The following pom.xml files are missing the git-commit-id-plugin:"
+          for mp in "${missing_plugins[@]}"; do
+            echo " - $mp"
+          done
+          exit 1
+        else
+          echo "All pom.xml files contain git-commit-id-plugin"
+        fi
 
     - name: Build check for sign plugin
       run: cd ${{ inputs.SERVICE_LOCATION }} && xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:build/s:plugins/s:plugin[s:groupId='org.apache.maven.plugins']/s:artifactId" -nl pom.xml | grep -q "maven-gpg-plugin"

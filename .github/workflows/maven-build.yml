@@ -83,7 +83,7 @@ jobs:
 
         while IFS= read -r pom; do
           if xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" \
-            -t -v "//s:project/s:build/s:plugins/s:plugin[s:groupId='pl.project13.maven']/s:artifactId" -nl "$pom" \
+            -t -v "//s:project/s:build/s:plugins/s:plugin[s:groupId='pl.project13.maven' and s:artifactId='git-commit-id-plugin']/s:artifactId" -nl "$pom" \
             | grep -q "git-commit-id-plugin"; then
             echo "✅ Found git-commit-id-plugin in $pom"
             has_plugin+=("$pom")

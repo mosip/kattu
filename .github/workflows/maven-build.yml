@@ -14,9 +14,9 @@ on:
         type: string 
     secrets:
       BROWSERSTACK_USERNAME:
-        required: true
+        required: false
       BROWSERSTACK_ACCESS_KEY:
-        required: true
+        required: false
       OSSRH_USER:
         required: true
       OSSRH_SECRET:

@@ -155,6 +155,7 @@ jobs:
       
       - name: Update Fastlane to Latest Version
         run: |
+          brew update
           brew install fastlane
 
       - name: Deploy iOS Beta to TestFlight

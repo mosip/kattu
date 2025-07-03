@@ -19,7 +19,8 @@ on:
         required: true
       SLACK_WEBHOOK_URL:
         required: true
-
+      ORG_KEY:
+        required: true
 jobs:
   maven-sonar-analysis:
     runs-on: ubuntu-latest

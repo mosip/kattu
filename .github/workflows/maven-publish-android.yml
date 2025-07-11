@@ -156,8 +156,8 @@ jobs:
         if: "${{ !contains(github.ref, 'master') && github.event_name != 'pull_request' &&  github.event_name == 'workflow_dispatch' }}"
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}
-          ./gradlew publish -Psigning.gnupg.keyName=${{env.KEY_ID}} -Psigning.gnupg.passphrase=${{secrets.GPG_SECRET}}
-
+          ./gradlew publish --debug -Psigning.gnupg.keyName=${{env.KEY_ID}} -Psigning.gnupg.passphrase=${{secrets.GPG_SECRET}}
+        
       - name: Publish to Slack
         uses: 8398a7/action-slack@v3
         with:

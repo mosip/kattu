@@ -151,7 +151,7 @@ jobs:
         env:
           OSSRH_USER: ${{secrets.OSSRH_USER}}
           OSSRH_SECRET: ${{secrets.OSSRH_SECRET}}
-          OSSRH_URL: ${{secrets.OSSRH_GRADLE_URL}}
+          OSSRH_URL: ${{secrets.OSS_URL}}
           GPG_SECRET: ${{secrets.GPG_SECRET}}
         if: "${{ !contains(github.ref, 'master') && github.event_name != 'pull_request' &&  github.event_name == 'workflow_dispatch' }}"
         run: |

@@ -142,10 +142,15 @@ jobs:
           done
 
       - name: Build with Gradlew
+        env:
+          OSSRH_USER: ${{ secrets.OSSRH_USER }}
+          OSSRH_SECRET: ${{ secrets.OSSRH_SECRET }}
+          OSSRH_URL: ${{ secrets.OSSRH_URL }}
+          GPG_SECRET: ${{ secrets.GPG_SECRET }}
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}
           #./gradlew assembleRelease
-          ./gradlew publishToMavenLocal
+          ./gradlew publishToMavenLocal -Psigning.gnupg.keyName=${{ env.KEY_ID }} -Psigning.gnupg.passphrase=${{ secrets.GPG_SECRET }}
 
       - name: Show build folder structure
         run: |

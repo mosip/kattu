@@ -150,7 +150,7 @@ jobs:
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}
           ./gradlew assembleRelease
-          ./gradlew publishToMavenLocal -Psigning.gnupg.keyName=${{ env.KEY_ID }} -Psigning.gnupg.passphrase=${{ secrets.GPG_SECRET }}
+          ./gradlew publishJarReleasePublicationToLocalMavenWithChecksumsRepository -Psigning.gnupg.keyName=${{ env.KEY_ID }} -Psigning.gnupg.passphrase=${{ secrets.GPG_SECRET }}
 
       - name: Show build folder structure
         run: |
@@ -160,8 +160,8 @@ jobs:
       - name: Zip build outputs
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}/build
-          #zip -r ../build-outputs.zip .
-          zip -r ../build-outputs.zip ~/.m2/repository/io/mosip/
+          zip -r ../build-outputs.zip ./staging/
+          #zip -r ../build-outputs.zip ~/build/staging/io/mosip/
 
       - name: Upload zipped build outputs
         uses: actions/upload-artifact@v4

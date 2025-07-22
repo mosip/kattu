@@ -150,6 +150,7 @@ jobs:
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}
           ./gradlew assembleRelease
+          ./gradlew publishAarPublicationToLocalMavenWithChecksumsRepository -Psigning.gnupg.keyName=${{ env.KEY_ID }} -Psigning.gnupg.passphrase=${{ secrets.GPG_SECRET }}
           ./gradlew publishJarReleasePublicationToLocalMavenWithChecksumsRepository -Psigning.gnupg.keyName=${{ env.KEY_ID }} -Psigning.gnupg.passphrase=${{ secrets.GPG_SECRET }}
 
       - name: Show build folder structure

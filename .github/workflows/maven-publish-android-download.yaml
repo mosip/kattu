@@ -23,14 +23,10 @@ on:
         default: "MIT"
         type: string
       PUBLICATION_TYPE:
-        description: "Select artifact type to publish"
+        description: "Select artifact type to publish: aar, jar, or both"
         required: false
         default: both
-        type: choice
-        options:
-          - aar
-          - jar
-          - both
+        type: string
     secrets:
       OSSRH_USER:
         required: true

@@ -26,11 +26,7 @@ on:
         description: "Select artifact type to publish"
         required: false
         default: both
-        type: choice
-        options:
-          - aar
-          - jar
-          - both
+        type: string
     secrets:
       OSSRH_USER:
         required: true

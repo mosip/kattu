@@ -14,16 +14,6 @@ on:
         description: 'base branch for PR'
         required: true
         type: string
-      UPDATE_RELEASE_URL:
-        description: 'Set to true to update Maven publish URL to RELEASE_URL'
-        required: false
-        type: boolean
-        default: false
-      UPDATE_SNAPSHOT_URL:
-        description: 'Set to true to update Maven publish URL to OSSRH_SNAPSHOT_URL'
-        required: false
-        type: boolean
-        default: false
       UPDATE_POM_VERSION:
         description: 'Set to true to update POM versions'
         required: false
@@ -68,28 +58,10 @@ jobs:
 
       - name: Debug Inputs
         run: |
-          echo "UPDATE_RELEASE_URL: ${{ inputs.UPDATE_RELEASE_URL }}"
-          echo "UPDATE_SNAPSHOT_URL: ${{ inputs.UPDATE_SNAPSHOT_URL }}"
           echo "UPDATE_POM_VERSION: ${{ inputs.UPDATE_POM_VERSION }}"
           echo "FROM_VERSION: ${{ inputs.FROM_VERSION }}"
           echo "TO_VERSION: ${{ inputs.TO_VERSION }}"
           echo "VERSION_PAIR: ${{ inputs.VERSION_PAIR }}"
-
-      - name: Check for Conflicting Updates
-        run: |
-          if [ "${{ inputs.UPDATE_RELEASE_URL }}" = "true" ] && [ "${{ inputs.UPDATE_SNAPSHOT_URL }}" = "true" ]; then
-            echo "ERROR: Both UPDATE_RELEASE_URL and UPDATE_SNAPSHOT_URL cannot be true simultaneously."
-            exit 1
-          fi
-
-      - name: Conditional Maven URL Update
-        run: |
-          cd .github/workflows
-          if [ "${{ inputs.UPDATE_RELEASE_URL }}" = "true" ]; then
-            sed -i 's/OSSRH_SNAPSHOT_URL/RELEASE_URL/g' *push-trigger.yml
-          elif [ "${{ inputs.UPDATE_SNAPSHOT_URL }}" = "true" ]; then
-            sed -i 's/RELEASE_URL/OSSRH_SNAPSHOT_URL/g' *push-trigger.yml
-          fi
 
       - name: Conditional POM Version Update
         if: ${{ inputs.UPDATE_POM_VERSION }}

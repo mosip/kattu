@@ -151,7 +151,7 @@ jobs:
         env:
           OSSRH_USER: ${{secrets.OSSRH_USER}}
           OSSRH_SECRET: ${{secrets.OSSRH_SECRET}}
-          OSSRH_URL: ${{secrets.OSSRH_GRADLE_URL}}
+          OSSRH_URL: ${{secrets.OSSRH_URL}}
           GPG_SECRET: ${{secrets.GPG_SECRET}}
         if: "${{ !contains(github.ref, 'master') && github.event_name != 'pull_request' &&  github.event_name == 'workflow_dispatch' }}"
         run: |
@@ -163,7 +163,7 @@ jobs:
         run: |
           curl -X POST \
             -H "Authorization: Bearer ${{ secrets.OSSRH_TOKEN }}" \
-            https://ossrh-staging-api.central.sonatype.com/service/local/staging/manual/upload/defaultRepository/io/mosip
+            https://ossrh-staging-api.central.sonatype.com/manual/upload/defaultRepository/io/mosip
             
       - name: Publish to Slack
         uses: 8398a7/action-slack@v3

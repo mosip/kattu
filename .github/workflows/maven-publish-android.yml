@@ -162,7 +162,7 @@ jobs:
         if: "${{ !contains(github.ref, 'master') && github.event_name != 'pull_request' &&  github.event_name == 'workflow_dispatch' }}"
         run: |
           curl -X POST \
-            -H "Authorization: Bearer ${{ secrets.OSSRH_TOKEN }}" \
+            -u ${{ secrets.OSSRH_USER }}:${{ secrets.OSSRH_SECRET }} \
             https://ossrh-staging-api.central.sonatype.com/manual/upload/defaultRepository/io/mosip
             
       - name: Publish to Slack

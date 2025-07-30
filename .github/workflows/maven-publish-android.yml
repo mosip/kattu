@@ -163,7 +163,7 @@ jobs:
         run: |
           curl -X POST \
             -H "Authorization: Bearer ${{ secrets.OSSRH_TOKEN }}" \
-            https://ossrh-staging-api.central.sonatype.com/service/local/staging/manual/upload/defaultRepository/io/mosip
+            https://ossrh-staging-api.central.sonatype.com/manual/upload/defaultRepository/io/mosip
             
       - name: Publish to Slack
         uses: 8398a7/action-slack@v3

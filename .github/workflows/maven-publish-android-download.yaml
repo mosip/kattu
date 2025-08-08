@@ -184,7 +184,7 @@ jobs:
           
           # Zip only io/mosip folder contents
           cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}/build/staging
-          zip -r ../../build-outputs.zip io/*
+          zip -r ../../build-outputs.zip io
 
       - name: Upload zipped build outputs
         uses: actions/upload-artifact@v4

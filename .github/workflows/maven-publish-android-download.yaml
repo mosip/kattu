@@ -163,7 +163,7 @@ jobs:
           else
             echo "Skipping AAR publication (PUBLICATION_TYPE=${{ inputs.PUBLICATION_TYPE }})"
           fi
-        
+          
           # Conditional JAR publishing
           if [[ "${{ inputs.PUBLICATION_TYPE }}" == "jar" || "${{ inputs.PUBLICATION_TYPE }}" == "both" ]]; then
             echo "Publishing JAR..."
@@ -177,11 +177,14 @@ jobs:
           echo "Current directory: $(pwd)"
           find ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}/build
 
-      - name: Zip build outputs
+      - name: Prepare and zip build outputs
         run: |
-          cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}/build
-          zip -r ../build-outputs.zip ./staging/
-          #zip -r ../build-outputs.zip ~/build/staging/io/mosip/
+          # Delete metadata* files from all modules inside io/mosip
+          find ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}/build/staging/io/mosip -type f -name "metadata*" -delete
+          
+          # Zip only io/mosip folder contents
+          cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}/build/staging
+          zip -r ../../build-outputs.zip io/mosip
 
       - name: Upload zipped build outputs
         uses: actions/upload-artifact@v4

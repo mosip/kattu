@@ -22,6 +22,10 @@ on:
         required: false
         default: "MIT"
         type: string
+      RELEASE_TYPE:
+        description: 'snapshot or release'
+        required: true
+        type: string
     secrets:
       OSSRH_USER:
         required: true
@@ -153,6 +157,7 @@ jobs:
           OSSRH_SECRET: ${{secrets.OSSRH_SECRET}}
           OSSRH_URL: ${{secrets.OSSRH_URL}}
           GPG_SECRET: ${{secrets.GPG_SECRET}}
+          RELEASE_TYPE: ${{ inputs.RELEASE_TYPE }}
         if: "${{ !contains(github.ref, 'master') && github.event_name != 'pull_request' &&  github.event_name == 'workflow_dispatch' }}"
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}

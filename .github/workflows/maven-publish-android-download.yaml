@@ -27,6 +27,10 @@ on:
         required: false
         default: both
         type: string
+      RELEASE_TYPE:
+        description: 'snapshot or release'
+        required: true
+        type: string
     secrets:
       OSSRH_USER:
         required: true
@@ -115,6 +119,7 @@ jobs:
           echo "KEY_ID=${{ env.KEY_ID }}"
           echo "GPG_TTY=${{ env.GPG_TTY }}"
           echo "PUBLICATION_TYPE=${{ inputs.PUBLICATION_TYPE }}"
+          echo "RELEASE_TYPE=${{ inputs.RELEASE_TYPE }}"
 
       - name: Setup the settings file for ossrh server
         run: echo "<settings><servers><server><id>ossrh</id><username>${{secrets.OSSRH_USER}}</username><password>${{secrets.OSSRH_SECRET}}</password></server></servers><profiles><profile><id>ossrh</id><activation><activeByDefault>true</activeByDefault></activation><properties><gpg.executable>gpg2</gpg.executable><gpg.passphrase>${{secrets.GPG_SECRET}}</gpg.passphrase></properties></profile><profile><id>allow-snapshots</id><activation><activeByDefault>true</activeByDefault></activation><repositories><repository><id>snapshots-repo</id><url>https://central.sonatype.com/repository/maven-snapshots/</url><releases><enabled>false</enabled></releases><snapshots><enabled>true</enabled></snapshots></repository><repository><id>releases-repo</id><url>https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2/</url><releases><enabled>true</enabled></releases><snapshots><enabled>false</enabled></snapshots></repository><repository><id>danubetech-maven-public</id><url>https://repo.danubetech.com/repository/maven-public/</url></repository></repositories></profile></profiles></settings>" > $GITHUB_WORKSPACE/settings.xml
@@ -153,6 +158,8 @@ jobs:
           OSSRH_SECRET: ${{ secrets.OSSRH_SECRET }}
           OSSRH_URL: ${{ secrets.OSSRH_URL }}
           GPG_SECRET: ${{ secrets.GPG_SECRET }}
+          RELEASE_TYPE: ${{ inputs.RELEASE_TYPE }}
+
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}
           ./gradlew assembleRelease
@@ -198,6 +205,7 @@ jobs:
           OSSRH_SECRET: ${{ secrets.OSSRH_SECRET }}
           OSSRH_URL: ${{ secrets.OSSRH_URL }}
           GPG_SECRET: ${{ secrets.GPG_SECRET }}
+          RELEASE_TYPE: ${{ inputs.RELEASE_TYPE }}
         if: "${{ !contains(github.ref, 'master') && github.event_name != 'pull_request' && github.event_name == 'workflow_dispatch' }}"
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}

@@ -12,6 +12,9 @@ on:
       SERVICE_LOCATION:
         required: true
         type: string
+      NODE_VERSION:
+        default: '16'
+        type: string        
       NPM_BUILD_TYPE:
         required: false
         type: string
@@ -31,7 +34,7 @@ jobs:
     - uses: actions/checkout@v3
     - uses: actions/setup-node@v3.7.0
       with:
-        node-version: '16'
+        node-version: ${{ inputs.NODE_VERSION }}
 
     - name: Cache npm dependencies
       uses: actions/cache@v4

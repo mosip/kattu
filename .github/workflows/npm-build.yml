@@ -18,7 +18,7 @@ on:
         required: true
 
 env:
-  ZIP_DIR: 'dist'
+  ZIP_DIR: 'build'
 
 jobs:
   npm-build:
@@ -43,7 +43,7 @@ jobs:
 
     - name: NPM Build for NG
       if: ${{ inputs.NPM_BUILD_TYPE == 'NG' }}
-      run: cd ${{ inputs.SERVICE_LOCATION }} && npm run-script build -- --prod --base-href . --output-path=dist
+      run: cd ${{ inputs.SERVICE_LOCATION }} && npm run-script build -- --prod --base-href . --output-path=build
 
     - name: NPM Build for BOB
       if: ${{ inputs.NPM_BUILD_TYPE == 'BOB' }}

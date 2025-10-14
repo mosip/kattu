@@ -115,7 +115,7 @@ jobs:
       - name: Unzip and extract for npm
         if: ${{ contains(inputs.NPM_BUILD, 'true' ) && ( inputs.BUILD_ARTIFACT != false )  && ( inputs.ONLY_DOCKER == false )}}
         run: |
-          unzip "${{ inputs.BUILD_ARTIFACT }}.zip" "dist/*" -d "${{ inputs.SERVICE_LOCATION }}"
+          unzip "${{ inputs.BUILD_ARTIFACT }}.zip" "build/*" -d "${{ inputs.SERVICE_LOCATION }}"
 
       - name: Get current date
         run: echo "BUILD_TIME=$(date +'%Y-%m-%d-%H-%M-%S')"  >> $GITHUB_ENV

@@ -1,61 +1,437 @@
-name:  Manual workflow to transfer docker images
+name: Manual workflow to transfer docker images
 
 on:
   workflow_call:
     inputs:
+      USERNAME:
+        description: 'Provide registry username (e.g. robot$mosipdev+mosipdev for Harbor)'
+        required: true
+        default: ''
+        type: string
       DESTINATION_ORGANIZATION:
         description: 'Provide Docker Hub destination org'
         required: true
         default: ''
         type: string
-    secrets:
-      USERNAME:
-        description: 'Provide Docker Hub username'
+      REGISTRY_URL:
+        description: 'Provide destination registry URL'
         required: true
+        default: 'https://index.docker.io/v1/'
+        type: string
+      REGISTRY_TYPE:
+        description: 'Registry type (dockerhub, harbor, other)'
+        required: true
+        default: 'dockerhub'
+        type: string
+      ENABLE_WIREGUARD:
+        description: 'Enable WireGuard VPN for private networks'
+        required: false
+        default: false
+        type: boolean
+    secrets:
       TOKEN:
-        description: 'Provide Docker Hub token'
+        description: 'Provide registry token'
         required: true
       SLACK_WEBHOOK_URL:
         required: true
+      WIREGUARD_CONFIG:
+        description: 'WireGuard VPN configuration'
+        required: false
 
 jobs:
   Image-transfer:
     runs-on: ubuntu-latest
     steps:
       - name: checkout
-        uses: actions/checkout@v3
-      - name: update config.yml
+        uses: actions/checkout@v4
+
+      - name: Install WireGuard
+        run: sudo apt-get update && sudo apt-get install -y wireguard
+        if: ${{ inputs.ENABLE_WIREGUARD == true }}
+
+      - name: Configure WireGuard
         run: |
-          cd release/vidivi
-          echo "PWD: $( pwd )"
-          echo "LS : $( ls )"
-          sed -i "s/username:.*/username: ${{ secrets.USERNAME }}/g" config.yml
-          sed -i "s/token:.*/token: ${{ secrets.TOKEN }}/g" config.yml
-          sed -i "s/destination_organization.*/destination_organization: ${{ github.event.inputs.DESTINATION_ORGANIZATION }}/g" config.yml
-      - name: push images
-        run: |
-          cd release/vidivi
-          sudo apt-get update
-          sudo apt-get install -y python3-pip python3-venv
-          python3 -m venv venv  # Create a virtual environment
-          source venv/bin/activate  # Activate the virtual environment
-          pip install docker requests urllib3 PyYAML
-          pip show docker  # Verify installation
-          python vidivi.py push
+          # WireGuard config comes from secrets
+          if [ -z "${{ secrets.WIREGUARD_CONFIG }}" ]; then
+            echo "ERROR: WIREGUARD_CONFIG secret is not configured"
+            echo "Please configure the WireGuard configuration secret for Harbor VPN access"
+            exit 1
+          fi
           
-      - name: commit and push vidivi log
+          # Debug: Check if secret is available (without exposing content)
+          echo "Checking WIREGUARD_CONFIG secret..."
+          if [ ${#WIREGUARD_CONFIG} -eq 0 ]; then
+            echo "ERROR: WIREGUARD_CONFIG environment variable is empty"
+            exit 1
+          fi
+          echo "Secret length: ${#WIREGUARD_CONFIG} characters"
+          
+          # Create config file with proper handling
+          echo "Creating /etc/wireguard directory with proper permissions..."
+          sudo mkdir -p /etc/wireguard
+          sudo chmod 755 /etc/wireguard
+          sudo chown root:root /etc/wireguard
+          
+          # Debug: Check secret format without exposing sensitive data
+          echo "Secret contains '[Interface]': $(printf '%s' "$WIREGUARD_CONFIG" | grep -c '\[Interface\]')"
+          echo "Secret contains '[Peer]': $(printf '%s' "$WIREGUARD_CONFIG" | grep -c '\[Peer\]')"
+          
+          # Write to temp file with explicit newline handling
+          printf '%s' "$WIREGUARD_CONFIG" > /tmp/wg0.conf.tmp
+          
+          # Check temp file was created successfully
+          if [ ! -f /tmp/wg0.conf.tmp ]; then
+            echo "ERROR: Failed to create temporary config file"
+            exit 1
+          fi
+          
+          echo "Temp file size: $(wc -c < /tmp/wg0.conf.tmp) bytes"
+          echo "Temp file lines: $(wc -l < /tmp/wg0.conf.tmp)"
+          
+          # Write config directly with sudo
+          echo "Writing config directly with sudo..."
+          sudo tee /etc/wireguard/wg0.conf < /tmp/wg0.conf.tmp > /dev/null
+          
+          # Clean up temp file
+          rm -f /tmp/wg0.conf.tmp
+          
+          # Verify the file was created and check its size
+          if sudo test -f /etc/wireguard/wg0.conf; then
+            echo "Config file created successfully"
+            echo "Final config file size: $(sudo wc -c < /etc/wireguard/wg0.conf) bytes"
+          else
+            echo "ERROR: Config file still doesn't exist"
+            sudo ls -la /etc/wireguard/ || echo "Cannot list /etc/wireguard directory"
+            exit 1
+          fi
+          
+          # Set proper permissions
+          sudo chmod 600 /etc/wireguard/wg0.conf
+          sudo chown root:root /etc/wireguard/wg0.conf
+          
+          echo "Final file permissions: $(sudo ls -la /etc/wireguard/wg0.conf)"
+          
+          # Verify config file is not empty and has expected content
+          if ! sudo test -s /etc/wireguard/wg0.conf; then
+            echo "ERROR: WireGuard config file is empty after writing!"
+            exit 1
+          fi
+          
+          # Basic validation that it looks like a WireGuard config
+          if ! sudo grep -q "\[Interface\]" /etc/wireguard/wg0.conf; then
+            echo "ERROR: WireGuard config doesn't contain [Interface] section"
+            echo "Please check that WIREGUARD_CONFIG contains a valid WireGuard configuration"
+            exit 1
+          fi
+          
+          echo "WireGuard configuration applied successfully"
+          echo "Config file size: $(sudo wc -c < /etc/wireguard/wg0.conf) bytes"
+        env:
+          WIREGUARD_CONFIG: ${{ secrets.WIREGUARD_CONFIG }}
+        if: ${{ inputs.ENABLE_WIREGUARD == true }}
+
+      - name: Start WireGuard
+        run: |
+          sudo chmod 600 /etc/wireguard/wg0.conf
+          sudo chmod 700 /etc/wireguard/
+          sudo systemctl daemon-reload
+          echo "Starting WireGuard VPN..."
+          if ! sudo wg-quick up wg0; then
+            echo "ERROR: Failed to start WireGuard VPN"
+            echo "Config file contents (first 5 lines):"
+            sudo head -5 /etc/wireguard/wg0.conf
+            exit 1
+          fi
+          echo "WireGuard VPN started successfully"
+          sudo wg show wg0
+          echo "VPN connection established - Harbor registry should now be accessible"
+        if: ${{ inputs.ENABLE_WIREGUARD == true }}
+        
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          
+      - name: Install crane tool for multi-arch image transfers
+        run: |
+          # Install crane (Apache 2.0 License - Open Source)
+          # From Google's go-containerregistry project
+          curl -sL https://github.com/google/go-containerregistry/releases/latest/download/go-containerregistry_Linux_x86_64.tar.gz | sudo tar -xzC /usr/local/bin crane
+          crane version
+          echo "Crane installed successfully (Open Source - Apache 2.0)"
+          
+      - name: Install Python dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install docker requests urllib3 PyYAML
+          pip show docker
+          echo "Python dependencies installed"
+          
+      - name: Configure Docker for insecure registries
+        run: |
+          # Configure Docker daemon for HTTP registries like Harbor
+          REGISTRY_HOST=$(echo "${{ inputs.REGISTRY_URL }}" | sed 's|http://||' | sed 's|https://||' | cut -d'/' -f1)
+          echo "Configuring Docker for registry: $REGISTRY_HOST"
+          
+          # Create or update Docker daemon configuration
+          sudo mkdir -p /etc/docker
+          
+          # Check if URL starts with https:// (proper bash syntax)
+          if [[ "${{ inputs.REGISTRY_URL }}" != https://* ]]; then
+            echo "Adding insecure registry configuration for HTTP registry"
+            echo '{
+              "insecure-registries": ["'$REGISTRY_HOST'"]
+            }' | sudo tee /etc/docker/daemon.json
+            
+            # Restart Docker daemon
+            sudo systemctl restart docker
+            sleep 5
+          else
+            echo "HTTPS registry detected - no insecure configuration needed"
+          fi
+          
+          echo "Docker configured for registry operations"
+          
+      - name: Update config.yml with dynamic registry detection
+        run: |
+          cd release/vidivi
+          echo "PWD: $(pwd)"
+          echo "LS: $(ls)"
+          
+          # Update config.yml with provided values
+          # USERNAME is now a regular input, not a secret - no shell escaping issues!
+          USERNAME='${{ inputs.USERNAME }}'
+          TOKEN='${{ secrets.TOKEN }}'
+          DESTINATION_ORG='${{ inputs.DESTINATION_ORGANIZATION }}'
+          REGISTRY_URL='${{ inputs.REGISTRY_URL }}'
+          
+          echo "USERNAME provided: $USERNAME"
+          
+          # Update config using variables (prevents $ and other special chars from being interpreted)
+          sed -i "s|username:.*|username: ${USERNAME}|g" config.yml
+          sed -i "s|token:.*|token: ${TOKEN}|g" config.yml
+          sed -i "s|destination_organization:.*|destination_organization: ${DESTINATION_ORG}|g" config.yml
+          sed -i "s|registry_url:.*|registry_url: ${REGISTRY_URL}|g" config.yml
+          
+          echo "Updated config.yml:"
+          cat config.yml
+          
+          # Debug: Check if $ is preserved in config.yml
+          echo "Checking username in config.yml:"
+          grep "username:" config.yml
+          echo "Username contains '\$': $(grep 'username:.*\$' config.yml && echo 'YES' || echo 'NO')"
+          
+      - name: Login to destination registry
+        run: |
+          REGISTRY_TYPE="${{ inputs.REGISTRY_TYPE }}"
+          REGISTRY_URL="${{ inputs.REGISTRY_URL }}"
+          
+          echo "Registry Type: $REGISTRY_TYPE"
+          echo "Registry URL: $REGISTRY_URL"
+          
+          if [ "$REGISTRY_TYPE" = "dockerhub" ]; then
+            # Login to Docker Hub
+            echo "Logging in to Docker Hub..."
+            echo "${{ secrets.TOKEN }}" | docker login -u "${{ inputs.USERNAME }}" --password-stdin
+            echo "Docker Hub login successful"
+            
+          elif [ "$REGISTRY_TYPE" = "harbor" ] || [ "$REGISTRY_TYPE" = "other" ]; then
+            # Login to Harbor or other private registry
+            REGISTRY_HOST=$(echo "$REGISTRY_URL" | sed 's|http://||' | sed 's|https://||' | cut -d'/' -f1)
+            echo "Logging in to registry: $REGISTRY_HOST"
+            
+            # Test connectivity first (especially important for VPN-connected registries)
+            echo "Testing connectivity to $REGISTRY_HOST..."
+            
+            # Extract hostname and port (default to 443 for https, 80 for http)
+            if [[ "$REGISTRY_HOST" == *:* ]]; then
+              # Port is explicitly specified
+              REGISTRY_HOSTNAME="${REGISTRY_HOST%:*}"
+              REGISTRY_PORT="${REGISTRY_HOST##*:}"
+            else
+              # No port specified, use defaults
+              REGISTRY_HOSTNAME="$REGISTRY_HOST"
+              if [[ "$REGISTRY_URL" == https://* ]]; then
+                REGISTRY_PORT="443"
+              else
+                REGISTRY_PORT="80"
+              fi
+            fi
+            
+            echo "Testing connection to $REGISTRY_HOSTNAME:$REGISTRY_PORT..."
+            if ! timeout 10 nc -z "$REGISTRY_HOSTNAME" "$REGISTRY_PORT" 2>/dev/null; then
+              echo "WARNING: Cannot connect to $REGISTRY_HOSTNAME:$REGISTRY_PORT - registry may not be accessible"
+              if [ "${{ inputs.ENABLE_WIREGUARD }}" = "true" ]; then
+                echo "WireGuard is enabled - checking VPN status..."
+                sudo wg show wg0 || echo "WireGuard interface not active"
+              fi
+              echo "Proceeding with login attempt anyway..."
+            else
+              echo "Registry connectivity confirmed"
+            fi
+            
+            # Login to private registry
+            echo "Attempting login to $REGISTRY_HOST..."
+            
+            # Debug: Check credentials format
+            USERNAME='${{ inputs.USERNAME }}'
+            TOKEN='${{ secrets.TOKEN }}'
+            echo "Username: $USERNAME"
+            echo "Token length: ${#TOKEN}"
+            
+            # Try login with explicit error handling
+            if echo "$TOKEN" | docker login $REGISTRY_HOST -u "$USERNAME" --password-stdin 2>&1 | tee /tmp/docker_login.log; then
+              echo "Private registry login successful"
+            else
+              echo "Login failed. Error details:"
+              cat /tmp/docker_login.log
+              
+              echo ""
+              echo "Debugging information:"
+              echo "- Registry: $REGISTRY_HOST"
+              echo "- Username: $USERNAME"
+              echo "- Username format: Harbor robot accounts should be: robot\$project+name"
+              echo ""
+              echo "Common issues:"
+              echo "1. Username should be: robot\$mosipdev+robotname (not robot+mosipdev)"
+              echo "2. Token must be the robot account token from Harbor"
+              echo "3. Robot account must have push/pull permissions on mosipdev project"
+              echo ""
+              echo "Manual test command (run locally):"
+              echo "echo 'YOUR_TOKEN' | docker login harbor.mosip.net -u '$USERNAME' --password-stdin"
+              
+              exit 1
+            fi
+            
+          else
+            echo "ERROR: Unsupported registry type: $REGISTRY_TYPE"
+            echo "Supported types: dockerhub, harbor, other"
+            exit 1
+          fi
+          
+      - name: Transfer images with crane (simplified multi-arch support)
+        run: |
+          cd release/vidivi
+          echo "Starting image transfer with crane (unified approach)..."
+          
+          # Run vidivi with enhanced logging
+          python3 vidivi.py push 2>&1 | tee transfer.log
+          
+          # Display summary
+          echo "Transfer Summary:"
+          grep -E "(Successfully transferred image with crane|Completed processing|Error)" logs/vidivi.log | tail -30 || echo "No summary available"
+          
+      - name: Verify crane transfers
+        run: |
+          cd release/vidivi
+          echo "Verifying crane transfers..."
+          
+          # Updated patterns to match simplified script output - remove newlines
+          CRANE_SUCCESS=$(grep -c "Successfully transferred image with crane" logs/vidivi.log 2>/dev/null || echo "0")
+          CRANE_SUCCESS=$(echo "$CRANE_SUCCESS" | tr -d '\n')
+          
+          TOTAL_SUCCESS=$(grep -c "Completed processing" logs/vidivi.log 2>/dev/null || echo "0")
+          TOTAL_SUCCESS=$(echo "$TOTAL_SUCCESS" | tr -d '\n')
+          
+          FAILED=$(grep -c "Error in crane transfer\|Crane transfer failed" logs/vidivi.log 2>/dev/null || echo "0")
+          FAILED=$(echo "$FAILED" | tr -d '\n')
+          
+          echo "Crane transfers: $CRANE_SUCCESS"
+          echo "Total completed: $TOTAL_SUCCESS"
+          echo "Failed: $FAILED"
+          
+          # List all transferred images
+          if [ "$CRANE_SUCCESS" -gt 0 ] 2>/dev/null; then
+            echo ""
+            echo "Images transferred with crane:"
+            grep "Image available at:" logs/vidivi.log | sed 's/.*Image available at: /  - /' || echo "  - Could not extract image list"
+          fi
+          
+          # Exit with error if all transfers failed
+          if [ "$TOTAL_SUCCESS" -eq 0 ] 2>/dev/null && [ "$FAILED" -gt 0 ] 2>/dev/null; then
+            echo "ERROR: All image transfers failed!"
+            exit 1
+          fi
+          
+      - name: Generate transfer report
+        run: |
+          cd release/vidivi
+          echo "Generating transfer report..."
+          
+          # Count successes and failures with updated patterns - clean up output
+          CRANE_SUCCESS=$(grep -c "Successfully transferred image with crane" logs/vidivi.log 2>/dev/null || echo "0")
+          CRANE_SUCCESS=$(echo "$CRANE_SUCCESS" | tr -d '\n')
+          
+          TOTAL_SUCCESS=$(grep -c "Completed processing" logs/vidivi.log 2>/dev/null || echo "0")
+          TOTAL_SUCCESS=$(echo "$TOTAL_SUCCESS" | tr -d '\n')
+          
+          FAILED=$(grep -c "Error in crane transfer\|Crane transfer failed" logs/vidivi.log 2>/dev/null || echo "0")
+          FAILED=$(echo "$FAILED" | tr -d '\n')
+          
+          # Create summary report
+          cat > transfer_report.md << EOF
+          # Image Transfer Report
+          
+          **Date**: $(date)
+          **Registry Type**: ${{ inputs.REGISTRY_TYPE }}
+          **Registry URL**: ${{ inputs.REGISTRY_URL }}  
+          **Organization**: ${{ inputs.DESTINATION_ORGANIZATION }}
+          **WireGuard VPN**: ${{ inputs.ENABLE_WIREGUARD && 'Enabled' || 'Disabled' }}
+          
+          ## Statistics
+          - **Crane transfers**: $CRANE_SUCCESS
+          - **Total completed**: $TOTAL_SUCCESS
+          - **Failed transfers**: $FAILED
+          
+          ## Tools Used
+          - Crane (Apache 2.0): Universal container image transfers
+          - Automatically handles single-arch and multi-arch images
+          - Registry Support: HTTP/HTTPS auto-detection
+          
+          ## Transferred Images
+          EOF
+          
+          # Add transferred image details
+          grep "Image available at:" logs/vidivi.log | sed 's/.*Image available at: /- /' >> transfer_report.md || echo "- No successful transfers found" >> transfer_report.md
+          
+          echo ""
+          echo "Transfer report generated"
+          cat transfer_report.md
+          
+      - name: Commit and push vidivi log
         run: |
           cd release/vidivi/logs/
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          
+          # Add logs and report
           git add .
-          git commit -m "added vidivi log files"
-          git push  
+          cd ..
+          git add transfer_report.md || echo "No report to add"
+          
+          # Commit with detailed message using updated patterns - clean variables
+          TOTAL_COUNT=$(grep -c "Completed processing" logs/vidivi.log 2>/dev/null || echo "0")
+          TOTAL_COUNT=$(echo "$TOTAL_COUNT" | tr -d '\n')
+          
+          FAILED_COUNT=$(grep -c "Error in crane transfer\|Crane transfer failed" logs/vidivi.log 2>/dev/null || echo "0")
+          FAILED_COUNT=$(echo "$FAILED_COUNT" | tr -d '\n')
+          
+          git commit -m "Image transfer: $TOTAL_COUNT completed, $FAILED_COUNT failed to ${{ inputs.DESTINATION_ORGANIZATION }}" || echo "No changes to commit"
+          git push || echo "Push failed or no changes"
 
-      - uses: 8398a7/action-slack@v3
+      - name: Slack notification
+        uses: 8398a7/action-slack@v3
         with:
           status: ${{ job.status }}
-          fields: repo,message,author,commit,workflow,job # selectable (default: repo,message)
+          fields: repo,message,author,commit,workflow,job
+          text: |
+            Image Transfer ${{ job.status }}!
+            Registry Type: ${{ inputs.REGISTRY_TYPE }}
+            Registry URL: ${{ inputs.REGISTRY_URL }}
+            Organization: ${{ inputs.DESTINATION_ORGANIZATION }}
+            WireGuard VPN: ${{ inputs.ENABLE_WIREGUARD && 'Enabled' || 'Disabled' }}
+            Completed: $(grep -c "Completed processing" release/vidivi/logs/vidivi.log || echo "0")
+            Failed: $(grep -c "Error in crane transfer" release/vidivi/logs/vidivi.log || echo "0")
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} # required
-        if: "${{ github.event_name != 'pull_request' && failure() }}" # Pick up events even if the job fails or is canceled.
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        if: always()

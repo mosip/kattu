@@ -419,19 +419,10 @@ jobs:
           git commit -m "Image transfer: $TOTAL_COUNT completed, $FAILED_COUNT failed to ${{ inputs.DESTINATION_ORGANIZATION }}" || echo "No changes to commit"
           git push || echo "Push failed or no changes"
 
-      - name: Slack notification
-        uses: 8398a7/action-slack@v3
+      - uses: 8398a7/action-slack@v3
         with:
           status: ${{ job.status }}
-          fields: repo,message,author,commit,workflow,job
-          text: |
-            Image Transfer ${{ job.status }}!
-            Registry Type: ${{ inputs.REGISTRY_TYPE }}
-            Registry URL: ${{ inputs.REGISTRY_URL }}
-            Organization: ${{ inputs.DESTINATION_ORGANIZATION }}
-            WireGuard VPN: ${{ inputs.ENABLE_WIREGUARD && 'Enabled' || 'Disabled' }}
-            Completed: $(grep -c "Completed processing" release/vidivi/logs/vidivi.log || echo "0")
-            Failed: $(grep -c "Error in crane transfer" release/vidivi/logs/vidivi.log || echo "0")
+          fields: repo,message,author,commit,workflow,job # selectable (default: repo,message)
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-        if: always()
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} # required
+        if: "${{ github.event_name != 'pull_request' && failure() }}" # Pick up events even if the job fails or is canceled.

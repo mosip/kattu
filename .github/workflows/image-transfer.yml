@@ -313,7 +313,8 @@ jobs:
         run: |
           cd release/vidivi
           echo "Starting image transfer with crane (unified approach)..."
-          
+          # Enable pipefail to catch script failures
+          set -o pipefail          
           # Run vidivi with enhanced logging
           python3 vidivi.py push 2>&1 | tee transfer.log
           

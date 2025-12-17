@@ -22,6 +22,9 @@ on:
       SLACK_WEBHOOK_URL:
         required: true
 
+permissions:
+  contents: write  # ✅ REQUIRED for git tag & push
+
 env:
   ANDROID_HOME: '/opt/android-sdk/'
 

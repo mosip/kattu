@@ -67,8 +67,8 @@ jobs:
             echo "No Dockerfiles found."
           fi
 
-      - name: removing -DskipTests
-        run: sed -i "s/<skip>true<\/skip>/<skip>false<\/skip>/"       $( find ./ -type f -name "*pom.xml" )
+      #- name: removing -DskipTests
+      #  run: sed -i "s/<skip>true<\/skip>/<skip>false<\/skip>/"       $( find ./ -type f -name "*pom.xml" )
         
       #- name: removing --Dgpg.skip
       #  run: find . -type f -name "*push-trigger.yml" -print0 | xargs -0 sed -i "s/"-Dgpg.skip"//g"

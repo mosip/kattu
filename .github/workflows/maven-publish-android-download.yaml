@@ -31,6 +31,10 @@ on:
         description: 'snapshot or release'
         required: true
         type: string
+      GROUP_PATH:
+        description: "Maven group path (e.g. io/mosip or io/inji)"
+        required: true
+        type: string
     secrets:
       OSSRH_USER:
         required: true
@@ -115,6 +119,7 @@ jobs:
 
       - name: Debug environment variables
         run: |
+          echo "GROUP_PATH=${{ inputs.GROUP_PATH }}"
           echo "BRANCH_NAME=${{ env.BRANCH_NAME }}"
           echo "KEY_ID=${{ env.KEY_ID }}"
           echo "GPG_TTY=${{ env.GPG_TTY }}"
@@ -186,12 +191,12 @@ jobs:
 
       - name: Prepare and zip build outputs
         run: |
-          # Delete metadata* files from all modules inside io/mosip
-          find ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}/build/staging/io/mosip -type f -name "maven-metadata*" -delete
+          # Delete metadata* files from all modules inside io/inji
+          find ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}/build/staging/${{ inputs.GROUP_PATH }} -type f -name "maven-metadata*" -delete
           
-          # Zip only io/mosip folder contents
+          # Zip only top-level group folder (io/)
           cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}/build/staging
-          zip -r ../../build-outputs.zip io
+          zip -r ../../build-outputs.zip $(echo "${{ inputs.GROUP_PATH }}" | cut -d'/' -f1)
 
       - name: Upload zipped build outputs
         uses: actions/upload-artifact@v4

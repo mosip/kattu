@@ -191,7 +191,7 @@ jobs:
 
       - name: Prepare and zip build outputs
         run: |
-          # Delete metadata* files from all modules inside io/inji or io/mosip
+          # Delete metadata* files from all modules inside inputs.GROUP_PATH
           find ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}/build/staging/${{ inputs.GROUP_PATH }} -type f -name "maven-metadata*" -delete
           
           # Zip only top-level group folder (io/)

@@ -26,6 +26,10 @@ on:
         description: 'snapshot or release'
         required: true
         type: string
+      GROUP_PATH:
+        description: "Maven group path (e.g. io/mosip or io/inji)"
+        required: true
+        type: string
     secrets:
       OSSRH_USER:
         required: true

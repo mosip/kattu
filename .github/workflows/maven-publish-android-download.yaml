@@ -191,12 +191,17 @@ jobs:
 
       - name: Prepare and zip build outputs
         run: |
-          # Delete metadata* files from all modules inside inputs.GROUP_PATH
-          find ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}/build/staging/${{ inputs.GROUP_PATH }} -type f -name "maven-metadata*" -delete
-          
-          # Zip only top-level group folder (io/)
+          # Go to staging directory
           cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}/build/staging
-          zip -r ../../build-outputs.zip ${{ inputs.GROUP_PATH }}
+
+          # Extract top-level folder (io) from GROUP_PATH (io/inji or io/mosip)
+          TOP_DIR=$(echo "${{ inputs.GROUP_PATH }}" | cut -d'/' -f1)
+
+          # Delete metadata files safely inside io/*
+          find "$TOP_DIR" -type f -name "maven-metadata*" -delete
+
+          # Zip io/ so structure is preserved (io/inji or io/mosip)
+          zip -r ../../build-outputs.zip "$TOP_DIR"
 
       - name: Upload zipped build outputs
         uses: actions/upload-artifact@v4

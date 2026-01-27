@@ -10,10 +10,6 @@ on:
         required: false
         type: string
         default: 'https://sonarcloud.io'
-      PROJECT_KEY:
-        required: false
-        type: string
-        default: "mosip_${{ github.event.repository.name }}"
     secrets:
       SONAR_TOKEN:
         required: true
@@ -75,7 +71,7 @@ jobs:
 
       - name: Analyze with SonarCloud
         run: |
-          cd ${{ inputs.SERVICE_LOCATION }} &&  mvn -Psonar -U -B verify sonar:sonar -Dmaven.wagon.http.retryHandler.count=2 -Dsonar.projectKey=${{ inputs.PROJECT_KEY }} -Dsonar.organization=${{ secrets.ORG_KEY }} -Dsonar.host.url=${{ inputs.SONAR_URL }} -Dsonar.token=${{ secrets.SONAR_TOKEN1 }} -Dsonar.projectName=${{ github.event.repository.name }} --file pom.xml -s $GITHUB_WORKSPACE/settings.xml
+          cd ${{ inputs.SERVICE_LOCATION }} &&  mvn -Psonar -U -B verify sonar:sonar -Dmaven.wagon.http.retryHandler.count=2 Dsonar.projectKey=${{ secrets.ORG_KEY }}_${{ github.event.repository.name }} -Dsonar.organization=${{ secrets.ORG_KEY } -Dsonar.host.url=${{ inputs.SONAR_URL }} -Dsonar.token=${{ secrets.SONAR_TOKEN1 }} -Dsonar.projectName=${{ github.event.repository.name }} --file pom.xml -s $GITHUB_WORKSPACE/settings.xml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

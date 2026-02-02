@@ -10,10 +10,7 @@ on:
         required: false
         type: string
         default: 'https://sonarcloud.io'
-      PROJECT_KEY:
-        required: false
-        type: string
-        default: "mosip_${{ github.event.repository.name }}"
+      # No PROJECT_KEY input - will be generated from ORG_KEY
     secrets:
       SONAR_TOKEN:
         required: true
@@ -57,6 +54,7 @@ jobs:
           echo "BRANCH_NAME=$(echo ${{ github.ref }} | sed -e 's,.*/\(.*\),\1,')" >> $GITHUB_ENV
           echo "GPG_TTY=$(tty)" >> $GITHUB_ENV
           echo "SONAR URL : ${{ inputs.SONAR_URL }}"
+          echo "ORG_KEY: ${{ secrets.ORG_KEY }}" # For debugging
 
       - name: Setup branch and GPG public key
         run: |
@@ -70,14 +68,20 @@ jobs:
       - name: Setup the settings file for ossrh server
         run: echo "<settings> <servers> <server> <id>ossrh</id> <username>${{secrets.OSSRH_USER}}</username> <password>${{secrets.OSSRH_SECRET}}</password> </server> </servers> <profiles> <profile> <id>ossrh</id> <activation> <activeByDefault>true</activeByDefault> </activation> <properties> <gpg.executable>gpg2</gpg.executable> <gpg.passphrase>${{secrets.GPG_SECRET}}</gpg.passphrase> </properties> </profile> <profile> <id>allow-snapshots</id> <activation><activeByDefault>true</activeByDefault></activation> <repositories> <repository> <id>snapshots-repo</id> <url>https://oss.sonatype.org/content/repositories/snapshots</url> <releases><enabled>false</enabled></releases> <snapshots><enabled>true</enabled></snapshots> </repository> <repository> <id>releases-repo</id> <url>https://oss.sonatype.org/service/local/staging/deploy/maven2</url> <releases><enabled>true</enabled></releases> <snapshots><enabled>false</enabled></snapshots> </repository> <repository> <id>danubetech-maven-public</id> <url>https://repo.danubetech.com/repository/maven-public/</url> </repository> </repositories> </profile> <profile> <id>sonar</id> <properties> <sonar.sources>.</sonar.sources> <sonar.host.url>https://sonarcloud.io</sonar.host.url> </properties> <activation> <activeByDefault>false</activeByDefault> </activation> </profile> </profiles> </settings>" > $GITHUB_WORKSPACE/settings.xml
 
-      #- name: Build with Maven
-      #  run: cd ${{ inputs.SERVICE_LOCATION }} && mvn -B  package --file pom.xml -s $GITHUB_WORKSPACE/settings.xml
-
       - name: Analyze with SonarCloud
         run: |
+          # Convert service location to service key (replace / with -)
           SERVICE_KEY=$(echo "${{ inputs.SERVICE_LOCATION }}" | tr '/' '-') 
-          FULL_PROJECT_KEY="${{ inputs.PROJECT_KEY }}-${SERVICE_KEY}"
-          echo "Derived Project Key: ${FULL_PROJECT_KEY}"
+          
+          # Generate project key using ORG_KEY secret
+          FULL_PROJECT_KEY="${{ secrets.ORG_KEY }}_${{ github.event.repository.name }}-${SERVICE_KEY}"
+          
+          echo "Organization: ${{ secrets.ORG_KEY }}"
+          echo "Repository: ${{ github.event.repository.name }}"
+          echo "Service Location: ${{ inputs.SERVICE_LOCATION }}"
+          echo "Service Key: ${SERVICE_KEY}"
+          echo "Final Project Key: ${FULL_PROJECT_KEY}"
+          
           cd ${{ inputs.SERVICE_LOCATION }} && \
           mvn -U -B verify sonar:sonar \
             -Dmaven.wagon.http.retryHandler.count=2 \
@@ -91,10 +95,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
-      # - uses: 8398a7/action-slack@v3
-      #   with:
-      #     status: ${{ job.status }}
-      #     fields: repo,message,author,commit,workflow,job # selectable (default: repo,message)
-      #   env:
-      #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} # required
-      #   if: "${{ github.event_name != 'pull_request' && failure() }}" # Pick up events even if the job fails or is canceled.
+      - uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          fields: repo,message,author,commit,workflow,job # selectable (default: repo,message)
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} # required
+        if: "${{ github.event_name != 'pull_request' && failure() }}" # Pick up events even if the job fails or is canceled.

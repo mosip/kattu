@@ -6,6 +6,9 @@ on:
       SERVICE_LOCATION:
         required: true
         type: string
+      NODE_VERSION:
+        required: false
+        type: string
     secrets:
       SONAR_TOKEN:
         required: true
@@ -22,7 +25,7 @@ jobs:
       
       - uses: actions/setup-node@v3
         with:
-          node-version: '14'
+          node-version: ${{ inputs.NODE_VERSION || '14' }}
       
       - name: Cache npm dependencies
         uses: actions/cache@v4

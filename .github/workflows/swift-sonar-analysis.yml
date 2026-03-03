@@ -46,7 +46,7 @@ jobs:
             echo "\$SONAR_TOKEN environmental variable not set; EXITING;";
             exit 1;
           fi
-          if [[ -z ${{ secrets.ORG_KEY }} ]]; then
+          if [[ -z "${ORG_KEY}" ]]; then
             echo "\$ORG_KEY secret not set; EXITING;";
             exit 1;
           fi

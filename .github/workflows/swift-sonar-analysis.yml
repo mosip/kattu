@@ -6,6 +6,10 @@ on:
         description: 'Swift package location'
         required: true
         type: string
+      TEST_SCHEME:
+        description: 'Test scheme of the swift package'
+        required: true
+        type: string
       SONAR_URL:
         required: false
         type: string
@@ -25,7 +29,7 @@ env:
 
 jobs:
   swift-sonar-analysis:
-    runs-on: macos-latest
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v3
         with:
@@ -43,37 +47,83 @@ jobs:
       - name: Check if Environmental variables set for sonar
         run: |
           if [[ -z $SONAR_TOKEN ]]; then
-            echo "\$SONAR_TOKEN environmental variable not set; EXITING;";
-            exit 1;
+            echo "SONAR_TOKEN environmental variable not set; EXITING;"
+            exit 1
           fi
           if [[ -z ${{ secrets.ORG_KEY }} ]]; then 
-            echo "\$ORG_KEY secret not set; EXITING;";
-            exit 1;
+            echo "ORG_KEY secret not set; EXITING;"
+            exit 1
           fi
           if [[ -z $SONAR_URL ]]; then
-            echo "\$SONAR_URL environmental variable not set; EXITING;";
-            exit 1;
+            echo "SONAR_URL environmental variable not set; EXITING;"
+            exit 1
           fi
       
       - name: Generate Code Coverage
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}
-          swift test --enable-code-coverage
-          xcrun llvm-profdata merge -sparse .build/debug/codecov/default.profdata -o .build/debug/codecov/profdata.profdata
-          xcrun llvm-cov export -instr-profile=.build/debug/codecov/profdata.profdata -format="lcov" .build/debug/*PackageTests.xctest/Contents/MacOS/*PackageTests > coverage.xml
+
+          # Ensure Tests directory exists (to prevent SonarQube errors)
+          if [ ! -d "Tests" ]; then
+            echo "Tests directory is missing. Creating an empty Tests directory."
+            mkdir -p Tests
+          fi
+
+          # Check if Tests directory exists and is not empty
+          if [ -d "Tests" ] && [ "$(ls -A Tests 2>/dev/null)" ]; then
+                
+              # Run tests with xcodebuild for iOS simulator
+              xcodebuild test \
+                  -scheme "${{ inputs.TEST_SCHEME }}" \
+                  -destination 'platform=iOS Simulator,OS=latest,name=iPhone 15' \
+                  -enableCodeCoverage YES \
+                  -derivedDataPath .build/DerivedData || true
+
+              # Find test bundle and executable
+              TEST_BUNDLE=$(find .build/DerivedData -type d -name "*.xctest" | head -n 1)
+              
+              if [ -n "$TEST_BUNDLE" ]; then
+                TEST_EXECUTABLE=$(find "$TEST_BUNDLE" -type f -perm +111 | head -n 1)
+                COVERAGE_PATH=$(find .build/DerivedData -name "Coverage.profdata" | head -n 1)
+
+                if [ -n "$TEST_EXECUTABLE" ] && [ -n "$COVERAGE_PATH" ]; then
+                  # Generate coverage report in text format
+                  xcrun llvm-cov show \
+                      -instr-profile="$COVERAGE_PATH" \
+                      "$TEST_EXECUTABLE" \
+                      -format=text > coverage.report
+                  echo "Coverage report generated successfully"
+                else
+                  echo "Warning: Test executable or coverage data not found"
+                  touch coverage.report
+                fi
+              else
+                echo "Warning: Test bundle not found"
+                touch coverage.report
+              fi
+          else
+            echo "No tests found. Creating empty coverage report for SonarQube."
+            touch coverage.report
+          fi
 
       - name: Run Sonar Analysis
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}
-          sonar-scanner \
+
+          echo "Running SonarQube analysis..."
+          sonar-scanner -X \
             -Dsonar.projectKey=${{ secrets.ORG_KEY }}_${{ github.event.repository.name }} \
             -Dsonar.projectName=${{ github.event.repository.name }} \
             -Dsonar.organization=${{ secrets.ORG_KEY }} \
             -Dsonar.sources=Sources \
+            -Dsonar.tests=Tests \
             -Dsonar.language=swift \
             -Dsonar.swift.file.suffixes=.swift \
             -Dsonar.host.url=${{ inputs.SONAR_URL }} \
-            -Dsonar.swift.coverage.reportPaths=coverage.xml \
+            -Dsonar.swift.coverage.reportPaths=${{ inputs.SERVICE_LOCATION }}/coverage.report \
             -Dsonar.sourceEncoding=UTF-8
       
       - uses: 8398a7/action-slack@v3

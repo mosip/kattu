@@ -10,29 +10,21 @@ on:
         required: false
         type: string
         default: 'https://sonarcloud.io'
-      PROJECT_KEY:
-        required: false
-        type: string
-        default: "mosip_${{ github.event.repository.name }}"
-      PROJECT_NAME:
-        required: false
-        type: string
-        default: "${{ github.event.repository.name }}"
     secrets:
       SONAR_TOKEN:
         required: true
-      SONAR_ORGANIZATION:
+      ORG_KEY:
         required: true
       SLACK_WEBHOOK_URL:
         required: true
 
 env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-  SONAR_ORGANIZATION: ${{ secrets.SONAR_ORGANIZATION }}
   SONAR_URL: ${{ inputs.SONAR_URL }}
 
 jobs:
-  sonar-analysis:
+  swift-sonar-analysis:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v3
@@ -48,18 +40,18 @@ jobs:
           java-version: '17'
           distribution: 'adopt'
 
-      - name: Check if Environmental Variables are Set
-        run: | 
+      - name: Check if Environmental variables set for sonar
+        run: |
           if [[ -z $SONAR_TOKEN ]]; then
-            echo "SONAR_TOKEN environment variable not set; EXITING.";
+            echo "\$SONAR_TOKEN environmental variable not set; EXITING;";
             exit 1;
           fi
-          if [[ -z $SONAR_ORGANIZATION ]]; then
-            echo "SONAR_ORGANIZATION environment variable not set; EXITING.";
+          if [[ -z "${ORG_KEY}" ]]; then
+            echo "\$ORG_KEY secret not set; EXITING;";
             exit 1;
           fi
           if [[ -z $SONAR_URL ]]; then
-            echo "SONAR_URL environment variable not set; EXITING.";
+            echo "\$SONAR_URL environmental variable not set; EXITING;";
             exit 1;
           fi
       
@@ -71,18 +63,15 @@ jobs:
           xcrun llvm-cov export -instr-profile=.build/debug/codecov/profdata.profdata -format="lcov" .build/debug/*PackageTests.xctest/Contents/MacOS/*PackageTests > coverage.xml
 
       - name: Run Sonar Analysis
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}
           sonar-scanner \
-            -Dsonar.projectKey=${{ inputs.PROJECT_KEY }} \
-            -Dsonar.projectName=${{ inputs.PROJECT_NAME }} \
-            -Dsonar.organization=${{ secrets.SONAR_ORGANIZATION }} \
+            -Dsonar.projectKey=${{ secrets.ORG_KEY }}_${{ github.event.repository.name }} \
+            -Dsonar.projectName=${{ github.event.repository.name }} \
+            -Dsonar.organization=${{ secrets.ORG_KEY }} \
             -Dsonar.sources=Sources \
-            -Dsonar.language=swift
-            -Dsonar.swift.file.suffixes=.swift
+            -Dsonar.language=swift \
+            -Dsonar.swift.file.suffixes=.swift \
             -Dsonar.host.url=${{ inputs.SONAR_URL }} \
             -Dsonar.swift.coverage.reportPaths=coverage.xml \
             -Dsonar.sourceEncoding=UTF-8
@@ -90,7 +79,7 @@ jobs:
       - uses: 8398a7/action-slack@v3
         with:
           status: ${{ job.status }}
-          fields: repo,message,author,commit,workflow,job # selectable (default: repo,message)
+          fields: repo,message,author,commit,workflow,job
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} # required
-        if: "${{ github.event_name != 'pull_request' && failure() }}" # Pick up events even if the job fails or is canceled.
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        if: "${{ github.event_name != 'pull_request' && failure() }}"

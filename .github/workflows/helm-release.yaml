@@ -1,0 +1,105 @@
+name: Helm-release Preparation.
+
+on:
+  workflow_call:
+    inputs:
+      REPO_URL:
+        description: '<github-account-name>/<repo-name>'
+        required: true
+        type: string
+      REPO_BRANCH:
+        description: 'Repo Branch'
+        required: true
+        type: string
+      VERSION_PAIR:
+        description: 'Versions for Chart.yaml and install.sh files, format: CHART_VERSION,INSTALL_CHART_VERSION'
+        required: true
+        type: string
+      IMAGE_TAG:
+        description: 'Tag to update in values.yaml'
+        required: true
+        type: string
+      BASE:
+        description: 'base branch for PR'
+        required: true
+        type: string
+      COMMIT_MESSAGE:
+        description: 'commit message'
+        required: true
+        type: string
+    secrets:
+      ACTION_PAT:
+        required: true
+
+jobs:
+  helm-release-preparation:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.REPO_URL }}
+          ref: ${{ inputs.REPO_BRANCH }}
+
+      - name: Find and Update Chart Versions
+        run: |
+          CHART_VERSION=$(echo "${{ inputs.VERSION_PAIR }}" | cut -d',' -f1)
+          find . -type f -name Chart.yaml | while read -r chart_file; do
+            sed -i "s/^version: .*/version: $CHART_VERSION/" "$chart_file"
+            echo "Updated version in $chart_file to $CHART_VERSION"
+          done
+
+      - name: Find and Update Install Chart Versions
+        run: |
+          INSTALL_CHART_VERSION=$(echo "${{ inputs.VERSION_PAIR }}" | cut -d',' -f2)
+          echo "Using INSTALL_CHART_VERSION=$INSTALL_CHART_VERSION"
+          find . -type f -name install.sh | while read -r install_file; do
+            echo "Processing $install_file"
+            sed -i "s/^CHART_VERSION=.*/CHART_VERSION=$INSTALL_CHART_VERSION/" "$install_file"
+            echo "Updated version in $install_file to $INSTALL_CHART_VERSION"
+          done   
+
+      - name: Replace Docker repository and tag in values.yaml
+        run: |
+          new_tag="${{ inputs.IMAGE_TAG }}"
+          export new_tag
+          
+          values_files=$(find . -name "values.yaml")
+
+          for file in $values_files; do
+            echo "Processing $file"
+
+            # Default repository prefix
+            repo_prefix="mosipid"
+
+            # Detect if it is INJI stack
+            if grep -qE "injistackdev|injistackqa" "$file"; then
+              repo_prefix="injistack"
+            fi
+
+            echo "Using repository prefix: $repo_prefix"
+
+            if yq eval '.image' "$file" | grep -qv 'null'; then
+              yq eval ".image.repository |= sub(\"^[^/]+\", \"$repo_prefix\")" -i "$file"
+              yq eval '.image.tag |= env(new_tag)' -i "$file"
+            fi
+
+            if yq eval '.job' "$file" | grep -qv 'null'; then
+              yq eval ".job.image.repository |= sub(\"^[^/]+\", \"$repo_prefix\")" -i "$file"
+              yq eval '.job.image.tag |= env(new_tag)' -i "$file"
+            fi
+          
+            echo "Updated $file"
+          done
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6.1.0
+        with:
+          commit-message: Updated chart versions, image and tag for release changes
+          title: ${{ inputs.COMMIT_MESSAGE }}
+          body: Automated PR for release.
+          branch: releas-branch
+          delete-branch: true
+          base: ${{ inputs.BASE }}
+          token: ${{ secrets.ACTION_PAT }}
+          signoff: true

@@ -83,7 +83,7 @@ jobs:
               TEST_BUNDLE=$(find .build/DerivedData -type d -name "*.xctest" | head -n 1)
               
               if [ -n "$TEST_BUNDLE" ]; then
-                TEST_EXECUTABLE=$(find "$TEST_BUNDLE" -type f -perm +111 | head -n 1)
+                TEST_EXECUTABLE=$(find "$TEST_BUNDLE" -type f -perm -111 | head -n 1)
                 COVERAGE_PATH=$(find .build/DerivedData -name "Coverage.profdata" | head -n 1)
 
                 if [ -n "$TEST_EXECUTABLE" ] && [ -n "$COVERAGE_PATH" ]; then

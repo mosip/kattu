@@ -212,27 +212,6 @@ export const handler = async (event) => {
     ]
   }
 ];
-    {
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: `*PR:* <${pr.html_url}|View Pull Request>`
-      }
-    },
-    {
-      type: "actions",
-      elements: [
-        {
-          type: "button",
-          text: {
-            type: "plain_text",
-            text: "View Failed Checks"
-          },
-          url: failedCheck.html_url
-        }
-      ]
-    }
-  ];
 
   await notifySlackFailure(
     SLACK_FAILURE_CHANNEL,

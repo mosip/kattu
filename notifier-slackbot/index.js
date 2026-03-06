@@ -66,6 +66,34 @@ async function notifySlack(channel, message, slackToken) {
   }
 }
 
+async function notifySlackFailure(channel, blocks, slackToken) {
+  try {
+    const response = await axiosInstance.post(
+      "https://slack.com/api/chat.postMessage",
+      {
+        channel: channel,
+        text: "Build Failure Notification",
+        blocks: blocks
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${slackToken}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    if (!response.data?.ok) {
+      console.error("Slack API error:", response.data);
+      throw new Error(`Slack API returned error: ${response.data?.error}`);
+    }
+
+  } catch (error) {
+    console.error("Slack failure notification failed:", error.message);
+    throw error;
+  }
+}
+
 async function getPullRequestDetails(owner, repo, commitSha, octokit) {
   try {
     // Only fetch essential fields to reduce payload size
@@ -165,12 +193,43 @@ export const handler = async (event) => {
     const baseMessage = `*Repo*: ${repo}\n*Workflow*: ${failedCheck.name}\n*Checks*: ${failedCheck.html_url}`;
 
     if (pr.state === 'closed' && pr.merged && SLACK_FAILURE_CHANNEL) {
-      await notifySlack(
-        SLACK_FAILURE_CHANNEL, 
-        `🚨 *Build Failure After Merge*\n${baseMessage}`, 
-        SLACK_TOKEN
-      );
-    } else {
+
+  const blocks = [
+  {
+    type: "section",
+    text: {
+      type: "mrkdwn",
+      text:
+        `🚨 *Build Failure After Merge*\n\n` +
+        `*Repo:* ${owner}/${repo}\n` +
+        `*Branch:* ${checkSuite.head_branch}\n` +
+        `*Workflow:* ${failedCheck.name}\n` +
+        `*Author:* ${pr.user.login}\n` +
+        `*PR:* <${pr.html_url}|View Pull Request>`
+    }
+  },
+  {
+    type: "actions",
+    elements: [
+      {
+        type: "button",
+        text: {
+          type: "plain_text",
+          text: "View Failed Checks"
+        },
+        url: failedCheck.html_url,
+        style: "danger"
+      }
+    ]
+  }
+];
+
+  await notifySlackFailure(
+    SLACK_FAILURE_CHANNEL,
+    blocks,
+    SLACK_TOKEN
+  );
+} else {
       const slackUserId = await getSlackUserId(
         pr.user.login, 
         USER_MAP_URL, 

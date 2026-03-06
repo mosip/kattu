@@ -184,30 +184,34 @@ export const handler = async (event) => {
     if (pr.state === 'closed' && pr.merged && SLACK_FAILURE_CHANNEL) {
 
   const blocks = [
-    {
-      type: "header",
-      text: {
-        type: "plain_text",
-        text: "🚨 Build Failure After Merge"
+  {
+    type: "section",
+    text: {
+      type: "mrkdwn",
+      text:
+        `🚨 *Build Failure After Merge*\n\n` +
+        `*Repo:* ${owner}/${repo}\n` +
+        `*Branch:* ${checkSuite.head_branch}\n` +
+        `*Workflow:* ${failedCheck.name}\n` +
+        `*Author:* ${pr.user.login}\n` +
+        `*PR:* <${pr.html_url}|View Pull Request>`
+    }
+  },
+  {
+    type: "actions",
+    elements: [
+      {
+        type: "button",
+        text: {
+          type: "plain_text",
+          text: "View Failed Checks"
+        },
+        url: failedCheck.html_url,
+        style: "danger"
       }
-    },
-    {
-      type: "section",
-      fields: [
-        {
-          type: "mrkdwn",
-          text: `*Repository:*\n${owner}/${repo}`
-        },
-        {
-          type: "mrkdwn",
-          text: `*Workflow:*\n${failedCheck.name}`
-        },
-        {
-          type: "mrkdwn",
-          text: `*Author:*\n${pr.user.login}`
-        }
-      ]
-    },
+    ]
+  }
+];
     {
       type: "section",
       text: {

@@ -67,20 +67,31 @@ async function notifySlack(channel, message, slackToken) {
 }
 
 async function notifySlackFailure(channel, blocks, slackToken) {
-  await axiosInstance.post(
-    "https://slack.com/api/chat.postMessage",
-    {
-      channel: channel,
-      text: "Build Failure Notification",
-      blocks: blocks
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${slackToken}`,
-        "Content-Type": "application/json",
+  try {
+    const response = await axiosInstance.post(
+      "https://slack.com/api/chat.postMessage",
+      {
+        channel: channel,
+        text: "Build Failure Notification",
+        blocks: blocks
       },
+      {
+        headers: {
+          Authorization: `Bearer ${slackToken}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    if (!response.data?.ok) {
+      console.error("Slack API error:", response.data);
+      throw new Error(`Slack API returned error: ${response.data?.error}`);
     }
-  );
+
+  } catch (error) {
+    console.error("Slack failure notification failed:", error.message);
+    throw error;
+  }
 }
 
 async function getPullRequestDetails(owner, repo, commitSha, octokit) {

@@ -179,6 +179,45 @@ export const handler = async (event) => {
     );
     
     if (!failedCheck || !pr || !['open', 'closed'].includes(pr.state)) {
+      if (SLACK_FAILURE_CHANNEL) {
+
+  const blocks = [
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text:
+          `🚨 *Build Failure After Merge*\n\n` +
+          `*Repo:* ${owner}/${repo}\n` +
+          `*Branch:* ${checkSuite.head_branch}\n` +
+          `*Workflow:* ${failedCheck.name}\n` +
+          `*Author:* ${pr.user.login}\n` +
+          `*PR:* <${pr.html_url}|View Pull Request>`
+      }
+    },
+    {
+      type: "actions",
+      elements: [
+        {
+          type: "button",
+          text: {
+            type: "plain_text",
+            text: "View Failed Checks"
+          },
+          url: failedCheck.html_url,
+          style: "danger"
+        }
+      ]
+    }
+  ];
+
+  await notifySlackFailure(
+    SLACK_FAILURE_CHANNEL,
+    blocks,
+    SLACK_TOKEN
+  );
+
+}
       return {
         statusCode: 200,
         body: JSON.stringify({ message: 'No action required' })

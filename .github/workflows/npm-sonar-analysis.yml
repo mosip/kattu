@@ -43,7 +43,7 @@ jobs:
           restore-keys: ${{ runner.os }}-sonar-
 
       - name: Install dependencies
-        run: cd ${{ inputs.SERVICE_LOCATION }} && npm install
+        run: cd ${{ inputs.SERVICE_LOCATION }} && npm ci --omit=optional
 
       - name: Run Sonar analysis
         run: |

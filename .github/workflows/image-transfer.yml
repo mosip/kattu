@@ -45,6 +45,33 @@ jobs:
       - name: checkout
         uses: actions/checkout@v4
 
+      - name: Validate access for protected organizations
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CALLER_REPO: ${{ github.repository }}
+          ACTOR: ${{ github.actor }}
+          DEST_ORG: ${{ inputs.DESTINATION_ORGANIZATION }}
+        run: |
+          # List of protected destination organizations (space-separated)
+          PROTECTED_ORGS="mosipid"
+          
+          for ORG in $PROTECTED_ORGS; do
+            if [ "$DEST_ORG" = "$ORG" ]; then
+              printf '🔒 Organization "%s" is protected — checking admin access for user "%s"\n' "$DEST_ORG" "$ACTOR"
+              
+              PERMISSION=$(gh api "repos/$CALLER_REPO/collaborators/$ACTOR/permission" --jq '.permission')
+              
+              if [ "$PERMISSION" != "admin" ]; then
+                printf '❌ ERROR: User "%s" has "%s" access but "admin" is required\n' "$ACTOR" "$PERMISSION" >&2
+                printf 'Only admins of repo "%s" can transfer images to the protected organization "%s"\n' "$CALLER_REPO" "$DEST_ORG" >&2
+                printf 'This restriction prevents accidental overwrites of production images.\n' >&2
+                exit 1
+              fi
+              
+              printf '✅ User "%s" has admin access — transfer to "%s" authorized\n' "$ACTOR" "$DEST_ORG"
+            fi
+          done  
+
       - name: Install WireGuard
         run: sudo apt-get update && sudo apt-get install -y wireguard
         if: ${{ inputs.ENABLE_WIREGUARD == true }}

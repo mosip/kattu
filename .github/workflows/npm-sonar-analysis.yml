@@ -9,6 +9,22 @@ on:
       NODE_VERSION:
         required: false
         type: string
+      SONAR_SOURCES:
+        required: false
+        type: string
+        default: 'src'
+      SONAR_TESTS:
+        required: false
+        type: string
+        default: 'src'
+      SONAR_TEST_INCLUSIONS:
+        required: false
+        type: string
+        default: '**/*.spec.ts'
+      SONAR_EXCLUSIONS:
+        required: false
+        type: string
+        default: '**/node_modules/**,**/android/**,**/ios/**'
     secrets:
       SONAR_TOKEN:
         required: true
@@ -20,17 +36,18 @@ on:
 jobs:
   npm-sonar-analysis:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v3
-      
+
       - uses: actions/setup-node@v3
         with:
           node-version: ${{ inputs.NODE_VERSION || '14' }}
-      
+
       - name: Cache npm dependencies
         uses: actions/cache@v4
         with:
-          path: '~/.npm'
+          path: ~/.npm
           key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-npm-
@@ -40,7 +57,8 @@ jobs:
         with:
           path: ~/.sonar/cache
           key: ${{ runner.os }}-sonar-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: ${{ runner.os }}-sonar-
+          restore-keys: |
+            ${{ runner.os }}-sonar-
 
       - name: Install dependencies
         run: cd ${{ inputs.SERVICE_LOCATION }} && npm ci --omit=optional
@@ -48,20 +66,26 @@ jobs:
       - name: Run Sonar analysis
         run: |
           cd "${{ inputs.SERVICE_LOCATION }}"
-          # Install sonar-scanner if needed
-          npm install sonar-scanner --no-save
-          # Run sonar analysis
+
+          npm install sonar-scanner@3.1.0 --no-save
+
+          COVERAGE_ARG=""
+          if [ -f coverage/lcov.info ]; then
+            COVERAGE_ARG="-Dsonar.typescript.lcov.reportPaths=coverage/lcov.info"
+          fi
+
           npx sonar-scanner \
             -Dsonar.host.url=https://sonarcloud.io \
             -Dsonar.projectKey=${{ secrets.ORG_KEY }}_${{ github.event.repository.name }} \
             -Dsonar.projectName=${{ github.event.repository.name }} \
             -Dsonar.organization=${{ secrets.ORG_KEY }} \
             -Dsonar.login=${{ secrets.SONAR_TOKEN }} \
-            -Dsonar.sources=src \
-            -Dsonar.tests=src \
-            -Dsonar.test.inclusions=**/*.spec.ts \
-            -Dsonar.exclusions=**/node_modules/** \
-            -Dsonar.typescript.lcov.reportPaths=coverage/lcov.info
+            -Dsonar.sources=${{ inputs.SONAR_SOURCES }} \
+            -Dsonar.tests=${{ inputs.SONAR_TESTS }} \
+            -Dsonar.test.inclusions=${{ inputs.SONAR_TEST_INCLUSIONS }} \
+            -Dsonar.exclusions=${{ inputs.SONAR_EXCLUSIONS }} \
+            -Dsonar.scanner.skipSystemTruststore=true \
+            $COVERAGE_ARG
 
       - uses: 8398a7/action-slack@v3
         with:

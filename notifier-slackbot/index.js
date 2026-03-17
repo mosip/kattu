@@ -72,7 +72,7 @@ async function notifySlackFailure(channel, blocks, slackToken) {
       "https://slack.com/api/chat.postMessage",
       {
         channel: channel,
-        text: "Build Failure Notification",
+        text: `Build Failure: ${owner}/${repo}`,
         blocks: blocks
       },
       {
@@ -139,7 +139,9 @@ async function getPullRequestDetails(owner, repo, commitSha, octokit) {
     throw error;
   }
 }
-
+function getFailureChannel(owner, orgSlackMap) {
+  return orgSlackMap[owner] || null;
+}
 export const handler = async (event) => {
   // Initialize Octokit only once per container lifecycle
   if (!octokit) {
@@ -186,13 +188,22 @@ export const handler = async (event) => {
     }
 
     // Prepare notification content
-    const { SLACK_TOKEN, USER_MAP_URL, GPG_USER_MAP_PASSPHRASE, 
-            SLACK_COMMON_CHANNEL, SLACK_FAILURE_CHANNEL } = process.env;
+    const { 
+  SLACK_TOKEN,
+  USER_MAP_URL,
+  GPG_USER_MAP_PASSPHRASE,
+  SLACK_COMMON_CHANNEL,
+  ORG_SLACK_CHANNEL_MAP
+} = process.env;
+
+const orgSlackMap = JSON.parse(ORG_SLACK_CHANNEL_MAP || "{}");
 
     // Construct base message once
     const baseMessage = `*Repo*: ${repo}\n*Workflow*: ${failedCheck.name}\n*Checks*: ${failedCheck.html_url}`;
 
-    if (pr.state === 'closed' && pr.merged && SLACK_FAILURE_CHANNEL) {
+    const failureChannel = getFailureChannel(owner, orgSlackMap);
+
+if (pr.state === 'closed' && pr.merged && failureChannel) {
 
   const blocks = [
   {
@@ -201,7 +212,7 @@ export const handler = async (event) => {
       type: "mrkdwn",
       text:
         `🚨 *Build Failure After Merge*\n\n` +
-        `*Repo:* ${owner}/${repo}\n` +
+        `*Repo:* <https://github.com/${owner}/${repo}|${owner}/${repo}>\n` +
         `*Branch:* ${checkSuite.head_branch}\n` +
         `*Workflow:* ${failedCheck.name}\n` +
         `*Author:* ${pr.user.login}\n` +
@@ -225,10 +236,10 @@ export const handler = async (event) => {
 ];
 
   await notifySlackFailure(
-    SLACK_FAILURE_CHANNEL,
-    blocks,
-    SLACK_TOKEN
-  );
+  failureChannel,
+  blocks,
+  SLACK_TOKEN
+);
 } else {
       const slackUserId = await getSlackUserId(
         pr.user.login, 

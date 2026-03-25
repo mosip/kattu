@@ -45,6 +45,45 @@ jobs:
       - name: checkout
         uses: actions/checkout@v4
 
+      - name: Validate access for protected organizations
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CALLER_REPO: ${{ github.repository }}
+          ACTOR: ${{ github.actor }}
+          DEST_ORG: ${{ inputs.DESTINATION_ORGANIZATION }}
+        run: |
+          # List of protected destination organizations (space-separated)
+          PROTECTED_ORGS="mosipid injistack"
+          
+          for ORG in $PROTECTED_ORGS; do
+            if [ "$DEST_ORG" = "$ORG" ]; then
+              printf '🔒 Organization "%s" is protected — checking access for user "%s"\n' "$DEST_ORG" "$ACTOR"
+              
+              API_OUTPUT=$(gh api "repos/$CALLER_REPO/collaborators/$ACTOR/permission" --jq '.permission' 2>&1) || {
+                printf '❌ ERROR: GitHub API call failed for user "%s" on repo "%s"\n' "$ACTOR" "$CALLER_REPO" >&2
+                printf '   API response: %s\n' "$API_OUTPUT" >&2
+                printf '   The user may not be a collaborator on "%s", or the token may lack sufficient permissions.\n' "$CALLER_REPO" >&2
+                exit 1
+              }
+              PERMISSION="$API_OUTPUT"
+              
+              if [ -z "$PERMISSION" ]; then
+                printf '❌ ERROR: GitHub API returned an empty permission for user "%s" on repo "%s"\n' "$ACTOR" "$CALLER_REPO" >&2
+                printf '   The user may not be a collaborator on this repository.\n' >&2
+                exit 1
+              fi
+              
+              if [ "$PERMISSION" != "admin" ] && [ "$PERMISSION" != "maintain" ]; then
+                printf '❌ ERROR: User "%s" has "%s" access but "admin" or "maintain" is required\n' "$ACTOR" "$PERMISSION" >&2
+                printf 'Only admins and maintainers of repo "%s" can transfer images to the protected organization "%s"\n' "$CALLER_REPO" "$DEST_ORG" >&2
+                printf 'This restriction prevents accidental overwrites of production images.\n' >&2
+                exit 1
+              fi
+              
+              printf '✅ User "%s" has %s access — transfer to "%s" authorized\n' "$ACTOR" "$PERMISSION" "$DEST_ORG"
+            fi
+          done 
+
       - name: Install WireGuard
         run: sudo apt-get update && sudo apt-get install -y wireguard
         if: ${{ inputs.ENABLE_WIREGUARD == true }}
@@ -314,7 +353,9 @@ jobs:
           cd release/vidivi
           echo "Starting image transfer with crane (unified approach)..."
           # Enable pipefail to catch script failures
-          set -o pipefail          
+
+          set -o pipefail
+
           # Run vidivi with enhanced logging
           python3 vidivi.py push 2>&1 | tee transfer.log
           

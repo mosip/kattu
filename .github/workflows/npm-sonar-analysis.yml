@@ -9,6 +9,7 @@ on:
       NODE_VERSION:
         required: false
         type: string
+        default: '18.x'
       SONAR_SOURCES:
         required: false
         type: string
@@ -24,7 +25,8 @@ on:
       SONAR_EXCLUSIONS:
         required: false
         type: string
-        default: '**/node_modules/**,**/android/**,**/ios/**'
+        default: '**/node_modules/**'
+
     secrets:
       SONAR_TOKEN:
         required: true
@@ -42,7 +44,7 @@ jobs:
 
       - uses: actions/setup-node@v3
         with:
-          node-version: ${{ inputs.NODE_VERSION || '14' }}
+          node-version: ${{ inputs.NODE_VERSION }}
 
       - name: Cache npm dependencies
         uses: actions/cache@v4
@@ -60,9 +62,31 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-sonar-
 
+      
       - name: Install dependencies
-        run: cd ${{ inputs.SERVICE_LOCATION }} && npm ci --omit=optional
+        run: |
+          cd "${{ inputs.SERVICE_LOCATION }}"
+          npm ci
 
+     
+      - name: Run tests with coverage
+        run: |
+          cd "${{ inputs.SERVICE_LOCATION }}"
+
+          # Prevent fsevents-related runtime issues
+          export CHOKIDAR_USEPOLLING=true
+          export WATCHPACK_POLLING=true
+
+          npm run test:ci
+
+      
+      - name: Check coverage file
+        run: |
+          cd "${{ inputs.SERVICE_LOCATION }}"
+          echo "Looking for lcov.info..."
+          find . -name lcov.info || true
+
+      
       - name: Run Sonar analysis
         run: |
           cd "${{ inputs.SERVICE_LOCATION }}"
@@ -71,7 +95,10 @@ jobs:
 
           COVERAGE_ARG=""
           if [ -f coverage/lcov.info ]; then
+            echo "Coverage file found"
             COVERAGE_ARG="-Dsonar.typescript.lcov.reportPaths=coverage/lcov.info"
+          else
+            echo "No coverage file found"
           fi
 
           npx sonar-scanner \
@@ -93,4 +120,4 @@ jobs:
           fields: repo,message,author,commit,workflow,job
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-        if: "${{ github.event_name != 'pull_request' && failure() }}"
+        if: ${{ github.event_name != 'pull_request' && failure() }}

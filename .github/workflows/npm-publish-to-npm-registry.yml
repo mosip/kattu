@@ -111,10 +111,10 @@ jobs:
           git tag $VERSION_TAG
           git push origin $VERSION_TAG
 
-      - uses: 8398a7/action-slack@v3
-        with:
-          status: ${{ job.status }}
-          fields: repo,message,author,commit,workflow,job
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-        if: failure() # Slack notification on failure
+      # - uses: 8398a7/action-slack@v3
+      #   with:
+      #     status: ${{ job.status }}
+      #     fields: repo,message,author,commit,workflow,job
+      #   env:
+      #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      #   if: failure() # Slack notification on failure

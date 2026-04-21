@@ -126,10 +126,10 @@ jobs:
             -Dsonar.swift.coverage.reportPaths=${{ inputs.SERVICE_LOCATION }}/coverage.report \
             -Dsonar.sourceEncoding=UTF-8
       
-      - uses: 8398a7/action-slack@v3
-        with:
-          status: ${{ job.status }}
-          fields: repo,message,author,commit,workflow,job
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-        if: "${{ github.event_name != 'pull_request' && failure() }}"
+      # - uses: 8398a7/action-slack@v3
+      #   with:
+      #     status: ${{ job.status }}
+      #     fields: repo,message,author,commit,workflow,job
+      #   env:
+      #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      #   if: "${{ github.event_name != 'pull_request' && failure() }}"

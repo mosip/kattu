@@ -72,19 +72,23 @@ jobs:
           # Check if Tests directory exists and is not empty
           if [ -d "Tests" ] && [ "$(ls -A Tests 2>/dev/null)" ]; then
                 
+              DERIVED_DATA='.build/DerivedData'
               # Run tests with xcodebuild for iOS simulator
               xcodebuild test \
                   -scheme "${{ inputs.TEST_SCHEME }}" \
                   -destination 'platform=iOS Simulator,OS=latest,name=iPhone 15' \
                   -enableCodeCoverage YES \
-                  -derivedDataPath .build/DerivedData || true
+                  -derivedDataPath $DERIVED_DATA || true
 
               # Find test bundle and executable
-              TEST_BUNDLE=$(find .build/DerivedData -type d -name "*.xctest" | head -n 1)
+              TEST_BUNDLE=$(find $DERIVED_DATA -type d -name "*.xctest" | head -n 1)
               
               if [ -n "$TEST_BUNDLE" ]; then
-                TEST_EXECUTABLE=$(find "$TEST_BUNDLE" -type f -perm -111 | head -n 1)
-                COVERAGE_PATH=$(find .build/DerivedData -name "Coverage.profdata" | head -n 1)
+                TEST_EXECUTABLE=$(find "$DERIVED_DATA/Build/Products" \
+                  -name "${{ inputs.TEST_SCHEME }}*.xctest" \
+                  -path "*/Debug-*" | head -n 1)
+                TEST_EXECUTABLE="$TEST_EXECUTABLE/$(basename "$TEST_EXECUTABLE" .xctest)"
+                COVERAGE_PATH=$(find $DERIVED_DATA -name "Coverage.profdata" | head -n 1)
 
                 if [ -n "$TEST_EXECUTABLE" ] && [ -n "$COVERAGE_PATH" ]; then
                   # Generate coverage report in text format

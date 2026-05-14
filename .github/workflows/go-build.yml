@@ -50,10 +50,10 @@ jobs:
           go mod verify
 
       - name: Run Lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v8
         with:
+          version: v2.1
           working-directory: ${{ inputs.SERVICE_LOCATION }}
-          version: latest
 
       - name: Run Tests
         run: |

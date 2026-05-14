@@ -22,9 +22,31 @@ jobs:
     steps:
       - name: Validate inputs
         id: validate
-        run: |
-          echo "${{ env.LOG_PREFIX }} Starting validation..."
-          BODY="${{ github.event.pull_request.title }} ${{ github.event.pull_request.body }}"
+       - name: Validate inputs
+         id: validate
+         env:
+           PR_TITLE: ${{ github.event.pull_request.title }}
+           PR_BODY: ${{ github.event.pull_request.body }}
+         run: |
+           echo "${{ env.LOG_PREFIX }} Starting validation..."
+           BODY="${PR_TITLE} ${PR_BODY}"
+           
+           if [ -z "$BODY" ] || [ "$BODY" == "null" ]; then
+             echo "${{ env.LOG_PREFIX }} ℹ️ No PR content found"
+             echo "has_issues=false" >> $GITHUB_OUTPUT
+             exit 0
+           fi
+
+       - name: Extract issue references
+         id: extract
+         if: steps.validate.outputs.has_issues == 'true'
+         env:
+           PR_TITLE: ${{ github.event.pull_request.title }}
+           PR_BODY: ${{ github.event.pull_request.body }}
+         run: |
+           echo "${{ env.LOG_PREFIX }} Extracting issue references..."
+           
+           BODY="${PR_TITLE} ${PR_BODY}"
           
           if [ -z "$BODY" ] || [ "$BODY" == "null" ]; then
             echo "${{ env.LOG_PREFIX }} ℹ️ No PR content found"

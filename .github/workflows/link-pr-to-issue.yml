@@ -120,24 +120,33 @@ jobs:
 
             echo "${{ env.LOG_PREFIX }} → Processing $REPO#$NUMBER"
 
-            COMMENTS_RESPONSE=$(curl -s -w "\n%{http_code}" \
-              -H "Authorization: Bearer $GH_TOKEN" \
-              -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/$REPO/issues/$NUMBER/comments")
+            COMMENT_ID=""
+            PAGE=1
+            while :; do
+              COMMENTS_RESPONSE=$(curl -s -w "\n%{http_code}" \
+                -H "Authorization: Bearer $GH_TOKEN" \
+                -H "Accept: application/vnd.github+json" \
+                "https://api.github.com/repos/$REPO/issues/$NUMBER/comments?per_page=100&page=$PAGE")
 
-            HTTP_CODE=$(echo "$COMMENTS_RESPONSE" | tail -n1)
-            COMMENTS_BODY=$(echo "$COMMENTS_RESPONSE" | head -n-1)
+              HTTP_CODE=$(echo "$COMMENTS_RESPONSE" | tail -n1)
+              COMMENTS_BODY=$(echo "$COMMENTS_RESPONSE" | head -n-1)
 
-            if [ "$HTTP_CODE" != "200" ]; then
-              echo "${{ env.LOG_PREFIX }} Failed to fetch comments (HTTP $HTTP_CODE)"
-              echo "$COMMENTS_BODY"
-              ((FAILED++))
-              continue
-            fi
+              if [ "$HTTP_CODE" != "200" ]; then
+                echo "${{ env.LOG_PREFIX }} Failed to fetch comments (HTTP $HTTP_CODE)"
+                echo "$COMMENTS_BODY"
+                ((FAILED++))
+                continue 2
+              fi
 
-            COMMENT_ID=$(echo "$COMMENTS_BODY" | jq -r \
-              --arg marker "$MARKER" \
-              '.[] | select(.body | contains($marker)) | .id' 2>/dev/null | head -n 1 || true)
+              COMMENT_ID=$(echo "$COMMENTS_BODY" | jq -r \
+                --arg marker "$MARKER" \
+                '.[] | select(.body | contains($marker)) | .id' 2>/dev/null | head -n1 || true)
+              [ -n "$COMMENT_ID" ] && break
+
+              PAGE_SIZE=$(echo "$COMMENTS_BODY" | jq 'length')
+              [ "$PAGE_SIZE" -lt 100 ] && break
+              PAGE=$((PAGE + 1))
+            done
 
             # ✅ Proper multiline formatting (FIXED)
             BODY_TEXT="🔗 Linked PR

@@ -1,0 +1,74 @@
+name: Go Build Reusable Workflow
+
+on:
+  workflow_call:
+    inputs:
+      SERVICE_LOCATION:
+        required: true
+        type: string
+
+      BUILD_BINARY:
+        required: true
+        type: string
+
+      GO_VERSION:
+        required: false
+        type: string
+        default: '1.22'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ${{ inputs.SERVICE_LOCATION }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ inputs.GO_VERSION }}
+
+      - name: Cache Go Modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+
+      - name: Download Dependencies
+        run: |
+          go mod download
+
+      - name: Verify Dependencies
+        run: |
+          go mod verify
+
+      - name: Run Lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          working-directory: ${{ inputs.SERVICE_LOCATION }}
+          version: latest
+
+      - name: Run Tests
+        run: |
+          go test ./... -v -coverprofile=coverage.out
+
+      - name: Build Binary
+        run: |
+          mkdir -p build
+
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+          go build -o build/${{ inputs.BUILD_BINARY }} ./cmd/${{ inputs.BUILD_BINARY }}
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.BUILD_BINARY }}
+          path: |
+            ${{ inputs.SERVICE_LOCATION }}/build/${{ inputs.BUILD_BINARY }}

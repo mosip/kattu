@@ -16,6 +16,10 @@ on:
         type: string
         default: '1.22'
 
+    secrets:
+      SLACK_WEBHOOK_URL:
+        required: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -23,16 +27,13 @@ jobs:
     defaults:
       run:
         working-directory: ${{ inputs.SERVICE_LOCATION }}
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version: ${{ inputs.GO_VERSION }}
-
       - name: Cache Go Modules
         uses: actions/cache@v4
         with:
@@ -44,7 +45,6 @@ jobs:
       - name: Download Dependencies
         run: |
           go mod download
-
       - name: Verify Dependencies
         run: |
           go mod verify

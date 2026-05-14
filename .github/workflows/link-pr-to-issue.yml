@@ -1,0 +1,206 @@
+name: PR → Issue Linker (smart)
+
+on:
+  workflow_call:
+    secrets:
+      CROSS_REPO_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+env:
+  LOG_PREFIX: "[PR-Linker]"
+
+jobs:
+  link:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Validate inputs
+        id: validate
+        run: |
+          echo "${{ env.LOG_PREFIX }} Starting validation..."
+          BODY="${{ github.event.pull_request.title }} ${{ github.event.pull_request.body }}"
+          
+          if [ -z "$BODY" ] || [ "$BODY" == "null" ]; then
+            echo "${{ env.LOG_PREFIX }} ℹ️ No PR content found"
+            echo "has_issues=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "has_issues=true" >> $GITHUB_OUTPUT
+
+      - name: Extract issue references
+        id: extract
+        if: steps.validate.outputs.has_issues == 'true'
+        run: |
+          echo "${{ env.LOG_PREFIX }} Extracting issue references..."
+
+          BODY="${{ github.event.pull_request.title }} ${{ github.event.pull_request.body }}"
+
+          ISSUES=$(echo "$BODY" | grep -Eo '([a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+)?#[0-9]+' | sort -u)
+
+          if [ -z "$ISSUES" ]; then
+            echo "${{ env.LOG_PREFIX }} No issues found"
+            echo "count=0" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          ISSUE_COUNT=$(echo "$ISSUES" | wc -l)
+          echo "${{ env.LOG_PREFIX }} Found $ISSUE_COUNT issue(s)"
+
+          echo "count=$ISSUE_COUNT" >> $GITHUB_OUTPUT
+          echo "issues<<EOF" >> $GITHUB_OUTPUT
+          echo "$ISSUES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Process issue links
+        if: steps.extract.outputs.count > 0
+        env:
+          GH_TOKEN: ${{ secrets.CROSS_REPO_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          SOURCE_REPO: ${{ github.repository }}
+          PR_ACTION: ${{ github.event.action }}
+          PR_MERGED: ${{ github.event.pull_request.merged }}
+        run: |
+          set +e
+          set +o pipefail
+
+          ISSUES="${{ steps.extract.outputs.issues }}"
+          MARKER="<!-- pr-linker:${PR_URL} -->"
+
+          PROCESSED=0
+          FAILED=0
+
+          echo "${{ env.LOG_PREFIX }} Processing issues..."
+
+          while IFS= read -r ISSUE; do
+            [ -z "$ISSUE" ] && continue
+
+            if [[ "$ISSUE" == *"/"* ]]; then
+              REPO=$(echo "$ISSUE" | cut -d'#' -f1)
+              NUMBER=$(echo "$ISSUE" | cut -d'#' -f2)
+            else
+              REPO="$SOURCE_REPO"
+              NUMBER=$(echo "$ISSUE" | cut -d'#' -f2)
+            fi
+
+            if ! [[ "$NUMBER" =~ ^[0-9]+$ ]]; then
+              echo "${{ env.LOG_PREFIX }} Invalid issue number: $NUMBER"
+              ((FAILED++))
+              continue
+            fi
+
+            echo "${{ env.LOG_PREFIX }} → Processing $REPO#$NUMBER"
+
+            COMMENTS_RESPONSE=$(curl -s -w "\n%{http_code}" \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$REPO/issues/$NUMBER/comments")
+
+            HTTP_CODE=$(echo "$COMMENTS_RESPONSE" | tail -n1)
+            COMMENTS_BODY=$(echo "$COMMENTS_RESPONSE" | head -n-1)
+
+            if [ "$HTTP_CODE" != "200" ]; then
+              echo "${{ env.LOG_PREFIX }} Failed to fetch comments (HTTP $HTTP_CODE)"
+              echo "$COMMENTS_BODY"
+              ((FAILED++))
+              continue
+            fi
+
+            COMMENT_ID=$(echo "$COMMENTS_BODY" | jq -r \
+              --arg marker "$MARKER" \
+              '.[] | select(.body | contains($marker)) | .id' 2>/dev/null | head -n 1 || true)
+
+            # ✅ Proper multiline formatting (FIXED)
+            BODY_TEXT="🔗 Linked PR
+
+            - PR: ${PR_URL}
+            - Source: ${SOURCE_REPO}
+
+            ${MARKER}"
+
+            # 🧹 DELETE if PR closed and NOT merged
+            if [[ "$PR_ACTION" == "closed" && "$PR_MERGED" == "false" ]]; then
+              if [ -n "$COMMENT_ID" ]; then
+                echo "${{ env.LOG_PREFIX }} Deleting comment $COMMENT_ID"
+
+                DELETE_RESPONSE=$(curl -s -w "\n%{http_code}" -X DELETE \
+                  -H "Authorization: Bearer $GH_TOKEN" \
+                  "https://api.github.com/repos/$REPO/issues/comments/$COMMENT_ID")
+
+                DELETE_CODE=$(echo "$DELETE_RESPONSE" | tail -n1)
+
+                if [[ "$DELETE_CODE" =~ ^(200|204)$ ]]; then
+                  ((PROCESSED++))
+                else
+                  echo "${{ env.LOG_PREFIX }} Delete failed (HTTP $DELETE_CODE)"
+                  echo "$DELETE_RESPONSE"
+                  ((FAILED++))
+                fi
+              else
+                echo "${{ env.LOG_PREFIX }} No comment to delete"
+                ((PROCESSED++))
+              fi
+              continue
+            fi
+
+            # 🔁 UPDATE
+            if [ -n "$COMMENT_ID" ]; then
+              echo "${{ env.LOG_PREFIX }} Updating comment $COMMENT_ID"
+
+              UPDATE_RESPONSE=$(curl -s -w "\n%{http_code}" -X PATCH \
+                -H "Authorization: Bearer $GH_TOKEN" \
+                -H "Accept: application/vnd.github+json" \
+                -H "Content-Type: application/json" \
+                "https://api.github.com/repos/$REPO/issues/comments/$COMMENT_ID" \
+                -d "$(jq -n --arg body "$BODY_TEXT" '{body: $body}')")
+
+              UPDATE_CODE=$(echo "$UPDATE_RESPONSE" | tail -n1)
+
+              if [[ "$UPDATE_CODE" =~ ^(200|201)$ ]]; then
+                ((PROCESSED++))
+              else
+                echo "${{ env.LOG_PREFIX }} Update failed (HTTP $UPDATE_CODE)"
+                echo "$UPDATE_RESPONSE"
+                ((FAILED++))
+              fi
+
+            # ➕ CREATE
+            else
+              echo "${{ env.LOG_PREFIX }} Creating new comment"
+
+              CREATE_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+                -H "Authorization: Bearer $GH_TOKEN" \
+                -H "Accept: application/vnd.github+json" \
+                -H "Content-Type: application/json" \
+                "https://api.github.com/repos/$REPO/issues/$NUMBER/comments" \
+                -d "$(jq -n --arg body "$BODY_TEXT" '{body: $body}')")
+
+              CREATE_CODE=$(echo "$CREATE_RESPONSE" | tail -n1)
+
+              if [[ "$CREATE_CODE" =~ ^(200|201)$ ]]; then
+                ((PROCESSED++))
+              else
+                echo "${{ env.LOG_PREFIX }} Create failed (HTTP $CREATE_CODE)"
+                echo "$CREATE_RESPONSE"
+                ((FAILED++))
+              fi
+            fi
+
+          done <<< "$ISSUES"
+
+          echo "${{ env.LOG_PREFIX }} Done. Processed: $PROCESSED | Failed: $FAILED"
+
+          # ✅ DO NOT fail workflow
+          exit 0
+
+      - name: Success summary
+        if: success()
+        run: |
+          echo "${{ env.LOG_PREFIX }} ✅ Workflow completed successfully"

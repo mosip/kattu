@@ -4,29 +4,105 @@ on:
   workflow_call:
     inputs:
       target_repo:
-        description: "Repo to protect, e.g. inji/vc-verifier"
+        description: "Repo to protect, e.g. mosip/<mosip-repo>"
         required: true
         type: string
 
       branch_pattern:
-        description: "Branch to protect, e.g. release-1.8.x"
-        required: true
-        type: string
-
-      allowed_user:
-        description: "GitHub username allowed to run this workflow"
+        description: "Branch to protect, e.g. release-1.1.x"
         required: true
         type: string
 
     secrets:
       ACTION_PAT:
         required: true
+      ALLOWED_TEAM:
+        required: false
 
 jobs:
+  # ── STEP 1: Verify actor is a collaborator or team member ──
+  check-access:
+    name: "🔍 Verify @${{ github.actor }} has access"
+    runs-on: ubuntu-latest
+    outputs:
+      authorized: ${{ steps.verify.outputs.authorized }}
+
+    steps:
+      - name: "Check collaborator or team membership"
+        id: verify
+        env:
+          GH_TOKEN: ${{ secrets.ACTION_PAT }}
+          ACTOR:    ${{ github.actor }}
+          REPO:     ${{ inputs.target_repo }}
+          TEAM:     ${{ secrets.ALLOWED_TEAM }}
+        run: |
+          ORG=$(echo "$REPO" | cut -d'/' -f1)
+          AUTHORIZED=false
+
+          echo "──────────────────────────────────────────"
+          echo "Actor  : $ACTOR"
+          echo "Repo   : $REPO"
+          echo "Branch : ${{ inputs.branch_pattern }}"
+          echo "──────────────────────────────────────────"
+
+          # ── Check 1: Is actor a collaborator on the target repo? ──
+          echo "▶ Checking collaborator access on $REPO ..."
+          COLLAB_STATUS=$(curl -s -o /tmp/collab.json -w "%{http_code}" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$REPO/collaborators/$ACTOR")
+
+          echo "  Collaborator API status: $COLLAB_STATUS"
+
+          if [ "$COLLAB_STATUS" = "204" ]; then
+            echo "  ✅ $ACTOR is a collaborator on $REPO"
+            AUTHORIZED=true
+          else
+            echo "  ℹ️  $ACTOR is NOT a collaborator on $REPO"
+          fi
+
+          # ── Check 2: Is actor an active member of the allowed team? ──
+          if [ "$AUTHORIZED" = "false" ] && [ -n "$TEAM" ]; then
+            echo "▶ Checking team membership in $ORG/$TEAM ..."
+            TEAM_STATUS=$(curl -s -o /tmp/team.json -w "%{http_code}" \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/orgs/$ORG/teams/$TEAM/memberships/$ACTOR")
+
+            echo "  Team membership API status: $TEAM_STATUS"
+
+            if [ "$TEAM_STATUS" = "200" ]; then
+              STATE=$(cat /tmp/team.json | jq -r '.state // "none"')
+              echo "  Membership state: $STATE"
+              if [ "$STATE" = "active" ]; then
+                echo "  ✅ $ACTOR is an active member of team '$TEAM'"
+                AUTHORIZED=true
+              else
+                echo "  ℹ️  Membership state is '$STATE' (not active)"
+              fi
+            else
+              echo "  ℹ️  $ACTOR is NOT a member of team '$TEAM'"
+            fi
+          fi
+
+          echo "──────────────────────────────────────────"
+          echo "Authorization result : $AUTHORIZED"
+          echo "──────────────────────────────────────────"
+          echo "authorized=$AUTHORIZED" >> $GITHUB_OUTPUT
+
+          if [ "$AUTHORIZED" = "false" ]; then
+            echo "::error::🚫 Access denied — @$ACTOR is neither a collaborator on '$REPO' nor an active member of the allowed team."
+            exit 1
+          fi
+
+  # ── STEP 2: Apply protection only if authorized ────────────
   apply-protection:
     name: "🔒 ${{ inputs.target_repo }} → ${{ inputs.branch_pattern }}"
     runs-on: ubuntu-latest
-    if: github.actor == inputs.allowed_user
+    needs: check-access
+    if: needs.check-access.outputs.authorized == 'true'
 
     steps:
       - name: "Apply branch protection"
@@ -37,7 +113,6 @@ jobs:
             "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1], safe=''))" \
             "${{ inputs.branch_pattern }}")
 
-          # ── All rules hardcoded from your screenshot settings ──
           HTTP_STATUS=$(curl -s -o /tmp/api_response.json -w "%{http_code}" \
             -X PUT \
             -H "Authorization: Bearer $GH_TOKEN" \
@@ -88,7 +163,7 @@ jobs:
           |---|---|
           | **Repo** | \`${{ inputs.target_repo }}\` |
           | **Branch** | \`${{ inputs.branch_pattern }}\` |
-          | **Triggered by** | \`${{ github.actor }}\` |
+          | **Triggered by** | \`@${{ github.actor }}\` |
 
           ### Rules applied
           | Rule | Value |

@@ -75,6 +75,19 @@ jobs:
 
       - name: Verify Lambda update
         run: |
+          STATE=$(aws lambda get-function \
+            --function-name probot-app \
+            --query 'Configuration.State' \
+            --output text)
+          
+          echo "Lambda function state: $STATE"
+          
+          if [ "$STATE" != "Active" ]; then
+            echo "Error: Lambda function is not in Active state"
+            exit 1
+          fi
+          
+          echo "Lambda deployment verified successfully"
           aws lambda get-function \
             --function-name probot-app \
             --query 'Configuration.[FunctionName,LastModified,State]' \

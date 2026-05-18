@@ -126,15 +126,23 @@ jobs:
 
               echo "${{ env.LOG_PREFIX }} Removing stale link from $ISSUE_REF"
 
+               COMMENT_ID=""
+            CLEANUP_PAGE=1
+            while :; do
               COMMENTS_DATA=$(curl -s \
                 -H "Authorization: Bearer $GH_TOKEN" \
                 -H "Accept: application/vnd.github+json" \
-                "$COMMENTS_URL")
+                "${COMMENTS_URL}?per_page=100&page=$CLEANUP_PAGE")
 
               COMMENT_ID=$(echo "$COMMENTS_DATA" | jq -r \
                 --arg marker "$MARKER" \
-                '.[] | select(.body | contains($marker)) | .id' | \
-                head -n1)
+                '.[] | select(.body | contains($marker)) | .id' 2>/dev/null | head -n1 || true)
+              [ -n "$COMMENT_ID" ] && break
+
+              CLEANUP_PAGE_SIZE=$(echo "$COMMENTS_DATA" | jq 'length')
+              [ "$CLEANUP_PAGE_SIZE" -lt 100 ] && break
+              CLEANUP_PAGE=$((CLEANUP_PAGE + 1))
+            done
 
               if [ -n "$COMMENT_ID" ] && [ "$COMMENT_ID" != "null" ]; then
 

@@ -75,13 +75,15 @@ jobs:
           GH_TOKEN: ${{ secrets.CROSS_REPO_TOKEN }}
           PR_URL: ${{ github.event.pull_request.html_url }}
           SOURCE_REPO: ${{ github.repository }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           set +e
           set +o pipefail
 
           echo "${{ env.LOG_PREFIX }} Cleaning stale issue links..."
 
-          CURRENT_BODY="${{ github.event.pull_request.title }} ${{ github.event.pull_request.body }}"
+          CURRENT_BODY="${PR_TITLE} ${PR_BODY}"
 
           CURRENT_ISSUES=$(echo "$CURRENT_BODY" | \
             grep -Eo '([a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+)?#[0-9]+' | \

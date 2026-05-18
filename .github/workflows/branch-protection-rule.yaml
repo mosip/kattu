@@ -1,0 +1,104 @@
+name: Apply Branch Protection Rules
+
+on:
+  workflow_call:
+    inputs:
+      target_repo:
+        description: "Repo to protect, e.g. inji/vc-verifier"
+        required: true
+        type: string
+
+      branch_pattern:
+        description: "Branch to protect, e.g. release-1.8.x"
+        required: true
+        type: string
+
+      allowed_user:
+        description: "GitHub username allowed to run this workflow"
+        required: true
+        type: string
+
+    secrets:
+      ACTION_PAT:
+        required: true
+
+jobs:
+  apply-protection:
+    name: "🔒 ${{ inputs.target_repo }} → ${{ inputs.branch_pattern }}"
+    runs-on: ubuntu-latest
+    if: github.actor == inputs.allowed_user
+
+    steps:
+      - name: "Apply branch protection"
+        env:
+          GH_TOKEN: ${{ secrets.ACTION_PAT }}
+        run: |
+          BRANCH_ENCODED=$(python3 -c \
+            "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1], safe=''))" \
+            "${{ inputs.branch_pattern }}")
+
+          # ── All rules hardcoded from your screenshot settings ──
+          HTTP_STATUS=$(curl -s -o /tmp/api_response.json -w "%{http_code}" \
+            -X PUT \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${{ inputs.target_repo }}/branches/${BRANCH_ENCODED}/protection" \
+            -d '{
+              "required_pull_request_reviews": {
+                "required_approving_review_count": 1,
+                "dismiss_stale_reviews": false,
+                "require_code_owner_reviews": false,
+                "require_last_push_approval": false
+              },
+              "required_status_checks": {
+                "strict": false,
+                "contexts": []
+              },
+              "required_conversation_resolution": true,
+              "enforce_admins": true,
+              "restrictions": {
+                "users": ["gsasikumar", "vishwa-vyom", "ckm007"],
+                "teams": [],
+                "apps": []
+              },
+              "allow_force_pushes": false,
+              "allow_deletions": false,
+              "required_linear_history": false,
+              "block_creations": false
+            }')
+
+          echo "HTTP Status : $HTTP_STATUS"
+          cat /tmp/api_response.json | jq .
+
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "::error::GitHub API returned HTTP $HTTP_STATUS — see response above"
+            exit 1
+          fi
+
+          echo "✅ Branch protection applied successfully."
+
+      - name: "Job summary"
+        if: success()
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY <<EOF
+          ## ✅ Branch Protection Applied
+
+          | | |
+          |---|---|
+          | **Repo** | \`${{ inputs.target_repo }}\` |
+          | **Branch** | \`${{ inputs.branch_pattern }}\` |
+          | **Triggered by** | \`${{ github.actor }}\` |
+
+          ### Rules applied
+          | Rule | Value |
+          |---|---|
+          | Required approvals | 1 |
+          | Require status checks | ✅ |
+          | Require conversation resolution | ✅ |
+          | Do not allow bypassing (admins) | ✅ |
+          | Restrict who can push | ✅ gsasikumar, vishwa-vyom, ckm007 |
+          | Restrict branch creation | ✅ |
+          | Force pushes | ❌ blocked |
+          | Branch deletion | ❌ blocked |
+          EOF

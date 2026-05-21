@@ -1,60 +1,94 @@
-name: Deploy to AWS Lambda (Probot App)
+name: Deploy Slack Notifier Lambda
 
 on:
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       message:
-        description: 'Message for manually triggering'
+        description: 'Manual trigger message'
         required: false
-        default: 'Triggered for Updates'
+        default: 'Manual deployment'
         type: string
+
   push:
     branches:
-      - '!release-branch'
       - master
-      - 1.*
       - develop
-      - MOSIP*
-      - release*
+      - '1.*'
+      - 'MOSIP*'
+      - 'release*'
+    paths:
+      - 'develop/notifier-slackbot/**'
+      - '.github/workflows/deploy-lamda.yml'
+
+concurrency:
+  group: deploy-slack-notifier-lambda
+  cancel-in-progress: true
 
 jobs:
   deploy-to-lambda:
     runs-on: ubuntu-latest
-    
+
+    defaults:
+      run:
+        working-directory: develop/notifier-slackbot
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
-    
-    - name: Setup Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: '18.x'
-    
-    - name: Install dependencies
-      run: |
-        cd notifier-slackbot && npm ci
-      
-    - name: Zip deployment package
-      run: |
-        cd notifier-slackbot
-        zip -q -r lambda-deployment.zip index.js node_modules package-lock.json package.json
-    
-    - name: Configure AWS Credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: us-east-1
-        mask-aws-account-id: true
-    
-    - name: Deploy to Lambda
-      run: |
-        cd notifier-slackbot
-        aws lambda update-function-code \
-          --function-name probot-app \
-          --zip-file fileb://lambda-deployment.zip \
-          --no-cli-pager \
-          --query 'LastUpdateStatus' \
-          --output text
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+          cache-dependency-path: develop/notifier-slackbot/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create Lambda deployment package
+        run: |
+          zip -q -r lambda-deployment.zip \
+            index.js \
+            package.json \
+            package-lock.json \
+            node_modules
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+          mask-aws-account-id: true
+
+      - name: Deploy Lambda function
+        run: |
+          aws lambda update-function-code \
+            --function-name probot-app \
+            --zip-file fileb://lambda-deployment.zip
+
+      - name: Wait for Lambda deployment
+        run: |
+          aws lambda wait function-updated \
+            --function-name probot-app
+
+      - name: Verify Lambda update
+        run: |
+          STATE=$(aws lambda get-function \
+            --function-name probot-app \
+            --query 'Configuration.State' \
+            --output text)
+          
+          echo "Lambda function state: $STATE"
+          
+          if [ "$STATE" != "Active" ]; then
+            echo "Error: Lambda function is not in Active state"
+            exit 1
+          fi
+          
+          echo "Lambda deployment verified successfully"
+          aws lambda get-function \
+            --function-name probot-app \
+            --query 'Configuration.[FunctionName,LastModified,State]' \
+            --output table

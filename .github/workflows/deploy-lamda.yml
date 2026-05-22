@@ -95,7 +95,6 @@ jobs:
           fi
 
           echo "Lambda deployment verified successfully"
-
           aws lambda get-function \
             --function-name probot-app \
             --query 'Configuration.[FunctionName,Runtime,LastModified,State,LastUpdateStatus]' \

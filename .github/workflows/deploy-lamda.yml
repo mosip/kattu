@@ -44,16 +44,18 @@ jobs:
           cache-dependency-path: notifier-slackbot/package-lock.json
           
       - name: Install dependencies
+        working-directory: notifier-slackbot
         run: npm ci
 
-      - name: Create Lambda deployment package
+      - name: Zip deployment package
+        working-directory: notifier-slackbot
         run: |
           zip -q -r lambda-deployment.zip \
             index.js \
+            node_modules \
             package.json \
-            package-lock.json \
-            node_modules
-
+            package-lock.json
+            
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:

@@ -17,7 +17,7 @@ on:
       - 'MOSIP*'
       - 'release*'
     paths:
-      - 'develop/notifier-slackbot/**'
+      - 'notifier-slackbot/**'
       - '.github/workflows/deploy-lamda.yml'
 
 concurrency:
@@ -30,7 +30,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: develop/notifier-slackbot
+        working-directory: notifier-slackbot
 
     steps:
       - name: Checkout repository
@@ -40,22 +40,20 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 18
-          cache: 'npm'
+          cache: npm
           cache-dependency-path: notifier-slackbot/package-lock.json
-          
+
       - name: Install dependencies
-        working-directory: notifier-slackbot
         run: npm ci
 
       - name: Zip deployment package
-        working-directory: notifier-slackbot
         run: |
           zip -q -r lambda-deployment.zip \
             index.js \
             node_modules \
             package.json \
             package-lock.json
-            
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -68,7 +66,8 @@ jobs:
         run: |
           aws lambda update-function-code \
             --function-name probot-app \
-            --zip-file fileb://lambda-deployment.zip
+            --zip-file fileb://lambda-deployment.zip \
+            --no-cli-pager
 
       - name: Wait for Lambda deployment
         run: |
@@ -81,16 +80,24 @@ jobs:
             --function-name probot-app \
             --query 'Configuration.State' \
             --output text)
-          
-          echo "Lambda function state: $STATE"
-          
-          if [ "$STATE" != "Active" ]; then
-            echo "Error: Lambda function is not in Active state"
+
+          UPDATE_STATUS=$(aws lambda get-function \
+            --function-name probot-app \
+            --query 'Configuration.LastUpdateStatus' \
+            --output text)
+
+          echo "Lambda State: $STATE"
+          echo "Lambda LastUpdateStatus: $UPDATE_STATUS"
+
+          if [[ "$STATE" != "Active" || "$UPDATE_STATUS" != "Successful" ]]; then
+            echo "Lambda deployment verification failed"
             exit 1
           fi
-          
+
           echo "Lambda deployment verified successfully"
+
           aws lambda get-function \
             --function-name probot-app \
-            --query 'Configuration.[FunctionName,LastModified,State]' \
+            --query 'Configuration.[FunctionName,Runtime,LastModified,State,LastUpdateStatus]' \
             --output table
+```

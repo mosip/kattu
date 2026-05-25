@@ -74,7 +74,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.ACTION_PAT }}
           PR_URL: ${{ github.event.pull_request.html_url }}
-          SOURCE_REPO: ${{ github.repository }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
@@ -88,9 +87,6 @@ jobs:
           CURRENT_ISSUES=$(echo "$CURRENT_BODY" | \
             grep -Eo '([a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+)?#[0-9]+' | \
             sort -u || true)
-
-          echo "${{ env.LOG_PREFIX }} Current referenced issues:"
-          echo "$CURRENT_ISSUES"
 
           MARKER="pr-linker:${PR_URL}"
 
@@ -120,29 +116,32 @@ jobs:
 
             ISSUE_REF="${ISSUE_REPO}#${ISSUE_NUMBER}"
 
-            echo "${{ env.LOG_PREFIX }} Checking existing linked issue: $ISSUE_REF"
-
             if ! echo "$CURRENT_ISSUES" | grep -q "$ISSUE_REF"; then
 
               echo "${{ env.LOG_PREFIX }} Removing stale link from $ISSUE_REF"
 
-               COMMENT_ID=""
-            CLEANUP_PAGE=1
-            while :; do
-              COMMENTS_DATA=$(curl -s \
-                -H "Authorization: Bearer $GH_TOKEN" \
-                -H "Accept: application/vnd.github+json" \
-                "${COMMENTS_URL}?per_page=100&page=$CLEANUP_PAGE")
+              COMMENT_ID=""
+              CLEANUP_PAGE=1
 
-              COMMENT_ID=$(echo "$COMMENTS_DATA" | jq -r \
-                --arg marker "$MARKER" \
-                '.[] | select(.body | contains($marker)) | .id' 2>/dev/null | head -n1 || true)
-              [ -n "$COMMENT_ID" ] && break
+              while :; do
+                COMMENTS_DATA=$(curl -s \
+                  -H "Authorization: Bearer $GH_TOKEN" \
+                  -H "Accept: application/vnd.github+json" \
+                  "${COMMENTS_URL}?per_page=100&page=$CLEANUP_PAGE")
 
-              CLEANUP_PAGE_SIZE=$(echo "$COMMENTS_DATA" | jq 'length')
-              [ "$CLEANUP_PAGE_SIZE" -lt 100 ] && break
-              CLEANUP_PAGE=$((CLEANUP_PAGE + 1))
-            done
+                COMMENT_ID=$(echo "$COMMENTS_DATA" | jq -r \
+                  --arg marker "$MARKER" \
+                  '.[] | select(.body | contains($marker)) | .id' \
+                  2>/dev/null | head -n1 || true)
+
+                [ -n "$COMMENT_ID" ] && break
+
+                CLEANUP_PAGE_SIZE=$(echo "$COMMENTS_DATA" | jq 'length')
+
+                [ "$CLEANUP_PAGE_SIZE" -lt 100 ] && break
+
+                CLEANUP_PAGE=$((CLEANUP_PAGE + 1))
+              done
 
               if [ -n "$COMMENT_ID" ] && [ "$COMMENT_ID" != "null" ]; then
 
@@ -156,13 +155,12 @@ jobs:
             fi
 
           done <<< "$COMMENT_URLS"
-          
+
       - name: Process issue links
         if: steps.extract.outputs.count > 0
         env:
           GH_TOKEN: ${{ secrets.ACTION_PAT }}
           PR_URL: ${{ github.event.pull_request.html_url }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
           SOURCE_REPO: ${{ github.repository }}
           PR_ACTION: ${{ github.event.action }}
           PR_MERGED: ${{ github.event.pull_request.merged }}
@@ -177,6 +175,14 @@ jobs:
           FAILED=0
 
           echo "${{ env.LOG_PREFIX }} Processing issues..."
+
+          if [[ "$PR_ACTION" == "closed" && "$PR_MERGED" == "true" ]]; then
+            STATUS="MERGED ✅"
+          elif [[ "$PR_ACTION" == "closed" && "$PR_MERGED" == "false" ]]; then
+            STATUS="CLOSED ❌"
+          else
+            STATUS="OPEN 🔄"
+          fi
 
           while IFS= read -r ISSUE; do
             [ -z "$ISSUE" ] && continue
@@ -199,6 +205,7 @@ jobs:
 
             COMMENT_ID=""
             PAGE=1
+
             while :; do
               COMMENTS_RESPONSE=$(curl -s -w "\n%{http_code}" \
                 -H "Authorization: Bearer $GH_TOKEN" \
@@ -210,56 +217,35 @@ jobs:
 
               if [ "$HTTP_CODE" != "200" ]; then
                 echo "${{ env.LOG_PREFIX }} Failed to fetch comments (HTTP $HTTP_CODE)"
-                echo "$COMMENTS_BODY"
                 ((FAILED++))
                 continue 2
               fi
 
               COMMENT_ID=$(echo "$COMMENTS_BODY" | jq -r \
                 --arg marker "$MARKER" \
-                '.[] | select(.body | contains($marker)) | .id' 2>/dev/null | head -n1 || true)
+                '.[] | select(.body | contains($marker)) | .id' \
+                2>/dev/null | head -n1 || true)
+
               [ -n "$COMMENT_ID" ] && break
 
               PAGE_SIZE=$(echo "$COMMENTS_BODY" | jq 'length')
+
               [ "$PAGE_SIZE" -lt 100 ] && break
+
               PAGE=$((PAGE + 1))
             done
 
-            # ✅ Proper multiline formatting (FIXED)
             BODY_TEXT="🔗 Linked PR
-
+            
             - PR: ${PR_URL}
             - Source: ${SOURCE_REPO}
+            - Status: ${STATUS}
+            - Updated: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
 
-            ${MARKER}"
+          ${MARKER}"
 
-            # 🧹 DELETE if PR closed and NOT merged
-            if [[ "$PR_ACTION" == "closed" && "$PR_MERGED" == "false" ]]; then
-              if [ -n "$COMMENT_ID" ]; then
-                echo "${{ env.LOG_PREFIX }} Deleting comment $COMMENT_ID"
+            if [ -n "$COMMENT_ID" ] && [ "$COMMENT_ID" != "null" ]; then
 
-                DELETE_RESPONSE=$(curl -s -w "\n%{http_code}" -X DELETE \
-                  -H "Authorization: Bearer $GH_TOKEN" \
-                  "https://api.github.com/repos/$REPO/issues/comments/$COMMENT_ID")
-
-                DELETE_CODE=$(echo "$DELETE_RESPONSE" | tail -n1)
-
-                if [[ "$DELETE_CODE" =~ ^(200|204)$ ]]; then
-                  ((PROCESSED++))
-                else
-                  echo "${{ env.LOG_PREFIX }} Delete failed (HTTP $DELETE_CODE)"
-                  echo "$DELETE_RESPONSE"
-                  ((FAILED++))
-                fi
-              else
-                echo "${{ env.LOG_PREFIX }} No comment to delete"
-                ((PROCESSED++))
-              fi
-              continue
-            fi
-
-            # 🔁 UPDATE
-            if [ -n "$COMMENT_ID" ]; then
               echo "${{ env.LOG_PREFIX }} Updating comment $COMMENT_ID"
 
               UPDATE_RESPONSE=$(curl -s -w "\n%{http_code}" -X PATCH \
@@ -275,12 +261,11 @@ jobs:
                 ((PROCESSED++))
               else
                 echo "${{ env.LOG_PREFIX }} Update failed (HTTP $UPDATE_CODE)"
-                echo "$UPDATE_RESPONSE"
                 ((FAILED++))
               fi
 
-            # ➕ CREATE
             else
+
               echo "${{ env.LOG_PREFIX }} Creating new comment"
 
               CREATE_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
@@ -296,7 +281,6 @@ jobs:
                 ((PROCESSED++))
               else
                 echo "${{ env.LOG_PREFIX }} Create failed (HTTP $CREATE_CODE)"
-                echo "$CREATE_RESPONSE"
                 ((FAILED++))
               fi
             fi
@@ -305,7 +289,6 @@ jobs:
 
           echo "${{ env.LOG_PREFIX }} Done. Processed: $PROCESSED | Failed: $FAILED"
 
-          # ✅ DO NOT fail workflow
           exit 0
 
       - name: Success summary

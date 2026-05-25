@@ -13,6 +13,13 @@ on:
         required: true
         type: string
 
+      # ── NEW: toggle to use custom rules file ────────────────
+      use_custom_rules:
+        description: "Use custom rules from branching-rule/custom-branch-protection-rules.yaml"
+        required: false
+        type: boolean
+        default: false
+
     secrets:
       ACTION_PAT:
         required: true
@@ -105,7 +112,73 @@ jobs:
     if: needs.check-access.outputs.authorized == 'true'
 
     steps:
-      # ── NEW: Check if identical rule already exists ─────────
+      # ── NEW: Checkout repo to read custom rules file ────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── NEW: Load rules — from file or hardcoded defaults ───
+      - name: "Load branch protection rules"
+        id: load-rules
+        run: |
+          if [ "${{ inputs.use_custom_rules }}" = "true" ]; then
+            CONFIG="branching-rule/custom-branch-protection-rules.yaml"
+            echo "📄 Loading rules from $CONFIG ..."
+
+            if [ ! -f "$CONFIG" ]; then
+              echo "::error::Custom rules file not found at $CONFIG — create the file or uncheck 'use_custom_rules'"
+              exit 1
+            fi
+
+            python3 - <<'EOF'
+          import yaml, os
+
+          with open("branching-rule/custom-branch-protection-rules.yaml") as f:
+            config = yaml.safe_load(f)
+
+          rules = config.get("rules", {})
+
+          def out(key, value):
+            with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"{key}={value}\n")
+
+          out("approvals",    rules.get("required_approving_review_count", 1))
+          out("dismiss",      str(rules.get("dismiss_stale_reviews", False)).lower())
+          out("codeowner",    str(rules.get("require_code_owner_reviews", False)).lower())
+          out("last_push",    str(rules.get("require_last_push_approval", False)).lower())
+          out("req_status",   str(rules.get("require_status_checks", False)).lower())
+          out("strict",       str(rules.get("strict_status_checks", False)).lower())
+          out("contexts",     rules.get("status_check_contexts", ""))
+          out("conversation", str(rules.get("required_conversation_resolution", True)).lower())
+          out("linear",       str(rules.get("required_linear_history", False)).lower())
+          out("enforce",      str(rules.get("enforce_admins", True)).lower())
+          out("force_push",   str(rules.get("allow_force_pushes", False)).lower())
+          out("deletions",    str(rules.get("allow_deletions", False)).lower())
+          out("push_users",   rules.get("push_users", "gsasikumar,vishwa-vyom,ckm007"))
+          out("push_teams",   rules.get("push_teams", ""))
+          print("✅ Custom rules loaded from file.")
+          EOF
+
+          else
+            echo "⚙️  Using default hardcoded rules ..."
+            # ── These match the existing hardcoded defaults below ──
+            echo "approvals=1"                              >> $GITHUB_OUTPUT
+            echo "dismiss=false"                            >> $GITHUB_OUTPUT
+            echo "codeowner=false"                          >> $GITHUB_OUTPUT
+            echo "last_push=false"                          >> $GITHUB_OUTPUT
+            echo "req_status=false"                         >> $GITHUB_OUTPUT
+            echo "strict=false"                             >> $GITHUB_OUTPUT
+            echo "contexts="                                >> $GITHUB_OUTPUT
+            echo "conversation=true"                        >> $GITHUB_OUTPUT
+            echo "linear=false"                             >> $GITHUB_OUTPUT
+            echo "enforce=true"                             >> $GITHUB_OUTPUT
+            echo "force_push=false"                         >> $GITHUB_OUTPUT
+            echo "deletions=false"                          >> $GITHUB_OUTPUT
+            echo "push_users=gsasikumar,vishwa-vyom,ckm007" >> $GITHUB_OUTPUT
+            echo "push_teams="                              >> $GITHUB_OUTPUT
+            echo "✅ Default rules loaded."
+          fi
+
+      # ── Check if identical rule already exists ──────────────
       - name: "Check existing branch protection"
         id: check-existing
         env:
@@ -147,26 +220,29 @@ jobs:
           # Sort existing users alphabetically for stable comparison
           EXISTING_USERS=$(echo "$EXISTING" | \
             jq -r '[.restrictions.users[]?.login] | sort | join(",")' 2>/dev/null || echo "")
-          DESIRED_USERS="ckm007,gsasikumar,vishwa-vyom"
+
+          # Sort desired users the same way for stable comparison
+          DESIRED_USERS=$(echo "${{ steps.load-rules.outputs.push_users }}" | \
+            tr ',' '\n' | sed 's/^ *//;s/ *$//' | sort | tr '\n' ',' | sed 's/,$//')
 
           echo ""
           echo "  Field               Existing      Desired"
           echo "  ──────────────────────────────────────────"
-          echo "  approvals         : $APPROVALS         → 1"
-          echo "  enforce_admins    : $ENFORCE       → true"
-          echo "  conversation_res  : $CONVERSATION       → true"
-          echo "  force_pushes      : $FORCE_PUSH      → false"
-          echo "  allow_deletions   : $DELETIONS      → false"
+          echo "  approvals         : $APPROVALS         → ${{ steps.load-rules.outputs.approvals }}"
+          echo "  enforce_admins    : $ENFORCE       → ${{ steps.load-rules.outputs.enforce }}"
+          echo "  conversation_res  : $CONVERSATION       → ${{ steps.load-rules.outputs.conversation }}"
+          echo "  force_pushes      : $FORCE_PUSH      → ${{ steps.load-rules.outputs.force_push }}"
+          echo "  allow_deletions   : $DELETIONS      → ${{ steps.load-rules.outputs.deletions }}"
           echo "  restricted users  : $EXISTING_USERS"
           echo "  desired users     : $DESIRED_USERS"
           echo ""
 
-          if [ "$APPROVALS"      = "1"              ] && \
-             [ "$ENFORCE"        = "true"           ] && \
-             [ "$CONVERSATION"   = "true"           ] && \
-             [ "$FORCE_PUSH"     = "false"          ] && \
-             [ "$DELETIONS"      = "false"          ] && \
-             [ "$EXISTING_USERS" = "$DESIRED_USERS" ]; then
+          if [ "$APPROVALS"      = "${{ steps.load-rules.outputs.approvals }}"    ] && \
+             [ "$ENFORCE"        = "${{ steps.load-rules.outputs.enforce }}"      ] && \
+             [ "$CONVERSATION"   = "${{ steps.load-rules.outputs.conversation }}" ] && \
+             [ "$FORCE_PUSH"     = "${{ steps.load-rules.outputs.force_push }}"   ] && \
+             [ "$DELETIONS"      = "${{ steps.load-rules.outputs.deletions }}"    ] && \
+             [ "$EXISTING_USERS" = "$DESIRED_USERS"                              ]; then
 
             echo "────────────────────────────────────────────────────────────"
             echo ""
@@ -194,21 +270,25 @@ jobs:
             echo "already_protected=false" >> $GITHUB_OUTPUT
           fi
 
-      # ── NEW: Validate users are repo collaborators ──────────
+      # ── Validate users are repo collaborators ───────────────
       # GitHub API restrictions.users silently drops users who are
       # not direct collaborators. This step checks each user first.
       - name: "Validate push-restriction users are repo collaborators"
         id: validate-users
         if: steps.check-existing.outputs.already_protected == 'false'
         env:
-          GH_TOKEN: ${{ secrets.ACTION_PAT }}
-          REPO:     ${{ inputs.target_repo }}
+          GH_TOKEN:   ${{ secrets.ACTION_PAT }}
+          REPO:       ${{ inputs.target_repo }}
+          PUSH_USERS: ${{ steps.load-rules.outputs.push_users }}
+          PUSH_TEAMS: ${{ steps.load-rules.outputs.push_teams }}
         run: |
-          DESIRED_USERS=("gsasikumar" "vishwa-vyom" "ckm007")
           VALID_USERS=()
+          VALID_TEAMS=()
 
           echo "▶ Checking each user is a collaborator on $REPO ..."
-          for USER in "${DESIRED_USERS[@]}"; do
+          IFS=',' read -ra USERS <<< "$PUSH_USERS"
+          for USER in "${USERS[@]}"; do
+            USER=$(echo "$USER" | xargs)   # trim spaces
             STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
               -H "Authorization: Bearer $GH_TOKEN" \
               -H "Accept: application/vnd.github+json" \
@@ -224,44 +304,92 @@ jobs:
             fi
           done
 
+          if [ -n "$PUSH_TEAMS" ]; then
+            IFS=',' read -ra TEAMS <<< "$PUSH_TEAMS"
+            for TEAM in "${TEAMS[@]}"; do
+              TEAM=$(echo "$TEAM" | xargs)
+              VALID_TEAMS+=("\"$TEAM\"")
+              echo "  ✅ Team '$TEAM' added to push restrictions"
+            done
+          fi
+
           USERS_JSON=$(IFS=,; echo "[${VALID_USERS[*]}]")
+          TEAMS_JSON=$(IFS=,; echo "[${VALID_TEAMS[*]}]")
           echo ""
-          echo "  Push restriction users JSON: $USERS_JSON"
+          echo "  Push restriction users JSON : $USERS_JSON"
+          echo "  Push restriction teams JSON : $TEAMS_JSON"
           echo "users_json=$USERS_JSON" >> $GITHUB_OUTPUT
+          echo "teams_json=$TEAMS_JSON" >> $GITHUB_OUTPUT
+
+      # ── Build status checks payload block ───────────────────
+      - name: "Build status checks payload"
+        id: build-status
+        if: steps.check-existing.outputs.already_protected == 'false'
+        run: |
+          REQUIRE="${{ steps.load-rules.outputs.req_status }}"
+          STRICT="${{ steps.load-rules.outputs.strict }}"
+          CONTEXTS="${{ steps.load-rules.outputs.contexts }}"
+
+          if [ "$REQUIRE" = "true" ] && [ -n "$CONTEXTS" ]; then
+            CONTEXTS_JSON=$(echo "$CONTEXTS" | tr ',' '\n' | \
+              sed 's/^ *//;s/ *$//' | jq -R . | jq -s .)
+            STATUS_JSON=$(jq -n \
+              --argjson strict "$STRICT" \
+              --argjson ctxs "$CONTEXTS_JSON" \
+              '{"strict": $strict, "contexts": $ctxs}')
+          elif [ "$REQUIRE" = "true" ]; then
+            STATUS_JSON=$(jq -n \
+              --argjson strict "$STRICT" \
+              '{"strict": $strict, "contexts": []}')
+          else
+            STATUS_JSON='{"strict": false, "contexts": []}'
+          fi
+
+          echo "status_json=$STATUS_JSON" >> $GITHUB_OUTPUT
 
       - name: "Apply branch protection"
         if: steps.check-existing.outputs.already_protected == 'false'
         env:
-          GH_TOKEN:   ${{ secrets.ACTION_PAT }}
-          USERS_JSON: ${{ steps.validate-users.outputs.users_json }}
+          GH_TOKEN:    ${{ secrets.ACTION_PAT }}
+          USERS_JSON:  ${{ steps.validate-users.outputs.users_json }}
+          TEAMS_JSON:  ${{ steps.validate-users.outputs.teams_json }}
+          STATUS_JSON: ${{ steps.build-status.outputs.status_json }}
         run: |
           BRANCH_ENCODED=$(python3 -c \
             "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1], safe=''))" \
             "${{ inputs.branch_pattern }}")
 
           PAYLOAD=$(jq -n \
-            --argjson users "$USERS_JSON" \
+            --argjson users       "$USERS_JSON" \
+            --argjson teams       "$TEAMS_JSON" \
+            --argjson status      "$STATUS_JSON" \
+            --argjson approvals   ${{ steps.load-rules.outputs.approvals }} \
+            --argjson dismiss     ${{ steps.load-rules.outputs.dismiss }} \
+            --argjson codeowner   ${{ steps.load-rules.outputs.codeowner }} \
+            --argjson last_push   ${{ steps.load-rules.outputs.last_push }} \
+            --argjson enforce     ${{ steps.load-rules.outputs.enforce }} \
+            --argjson conv_res    ${{ steps.load-rules.outputs.conversation }} \
+            --argjson force_push  ${{ steps.load-rules.outputs.force_push }} \
+            --argjson deletions   ${{ steps.load-rules.outputs.deletions }} \
+            --argjson linear      ${{ steps.load-rules.outputs.linear }} \
             '{
               "required_pull_request_reviews": {
-                "required_approving_review_count": 1,
-                "dismiss_stale_reviews": false,
-                "require_code_owner_reviews": false,
-                "require_last_push_approval": false
+                "required_approving_review_count": $approvals,
+                "dismiss_stale_reviews": $dismiss,
+                "require_code_owner_reviews": $codeowner,
+                "require_last_push_approval": $last_push
               },
-              "required_status_checks": {
-                "strict": false,
-                "contexts": []
-              },
-              "required_conversation_resolution": true,
-              "enforce_admins": true,
+              "required_status_checks": $status,
+              "required_conversation_resolution": $conv_res,
+              "enforce_admins": $enforce,
               "restrictions": {
                 "users": $users,
-                "teams": [],
+                "teams": $teams,
                 "apps": []
               },
-              "allow_force_pushes": false,
-              "allow_deletions": false,
-              "required_linear_history": false,
+              "allow_force_pushes": $force_push,
+              "allow_deletions": $deletions,
+              "required_linear_history": $linear,
               "block_creations": false
             }')
 
@@ -296,17 +424,21 @@ jobs:
           |---|---|
           | **Repo** | \`${{ inputs.target_repo }}\` |
           | **Branch** | \`${{ inputs.branch_pattern }}\` |
+          | **Rules mode** | ${{ inputs.use_custom_rules == true && '📄 Custom (custom-branch-protection-rules.yaml)' || '⚙️ Default' }} |
           | **Triggered by** | \`@${{ github.actor }}\` |
 
           ### Rules applied
           | Rule | Value |
           |---|---|
-          | Required approvals | 1 |
-          | Require status checks | ✅ |
-          | Require conversation resolution | ✅ |
-          | Do not allow bypassing (admins) | ✅ |
-          | Restrict who can push | ✅ gsasikumar, vishwa-vyom, ckm007 |
-          | Restrict branch creation | ✅ |
-          | Force pushes | ❌ blocked |
-          | Branch deletion | ❌ blocked |
+          | Required approvals | ${{ steps.load-rules.outputs.approvals }} |
+          | Dismiss stale reviews | ${{ steps.load-rules.outputs.dismiss }} |
+          | Require CODEOWNER | ${{ steps.load-rules.outputs.codeowner }} |
+          | Require status checks | ${{ steps.load-rules.outputs.req_status }} |
+          | Require conversation resolution | ${{ steps.load-rules.outputs.conversation }} |
+          | Do not allow bypassing (admins) | ${{ steps.load-rules.outputs.enforce }} |
+          | Restrict who can push (users) | ${{ steps.load-rules.outputs.push_users }} |
+          | Restrict who can push (teams) | ${{ steps.load-rules.outputs.push_teams }} |
+          | Force pushes | ${{ steps.load-rules.outputs.force_push }} |
+          | Branch deletion | ${{ steps.load-rules.outputs.deletions }} |
+          | Linear history | ${{ steps.load-rules.outputs.linear }} |
           EOF

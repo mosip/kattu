@@ -236,12 +236,13 @@ jobs:
             done
 
             BODY_TEXT="🔗 Linked PR
-- PR: ${PR_URL}
-- Source: ${SOURCE_REPO}
-- Status: ${STATUS}
-- Updated: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
 
-${MARKER}"
+            - PR: ${PR_URL}
+            - Source: ${SOURCE_REPO}
+            - Status: ${STATUS}
+            - Updated: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+
+            ${MARKER}"
 
             if [ -n "$COMMENT_ID" ] && [ "$COMMENT_ID" != "null" ]; then
 

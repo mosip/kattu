@@ -52,7 +52,7 @@ jobs:
       - name: Run Lint
         uses: golangci/golangci-lint-action@v8
         with:
-          version: v2.1
+          version: v2.12.2
           working-directory: ${{ inputs.SERVICE_LOCATION }}
 
       - name: Run Tests

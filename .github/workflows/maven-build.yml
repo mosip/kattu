@@ -21,6 +21,8 @@ on:
         required: true
       GPG_SECRET:
         required: true
+      GPG_PRIVATE_KEY:
+        required: true
       SLACK_WEBHOOK_URL:
         required: true
 
@@ -49,16 +51,12 @@ jobs:
       run: |
         # Strip git ref prefix from version
         echo "BRANCH_NAME=$(echo ${{ github.ref }} | sed -e 's,.*/\(.*\),\1,')" >> $GITHUB_ENV
-        echo "GPG_TTY=$(tty)" >> $GITHUB_ENV  
 
-    - name: Setup branch and GPG public key
-      run: |
-        # Strip git ref prefix from version
-        echo ${{ env.BRANCH_NAME }}
-        echo ${{ env.GPG_TTY }}
-        sudo apt-get --yes install gnupg2
-        gpg2 --import ./.github/keys/mosipgpgkey_pub.gpg 
-        gpg2 --quiet --batch --passphrase=${{secrets.GPG_SECRET}}  --allow-secret-key-import --import ./.github/keys/mosipgpgkey_sec.gpg 
+    - name: Import GPG key
+      uses: crazy-max/ghaction-import-gpg@v6
+      with:
+        gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+        passphrase: ${{ secrets.GPG_SECRET }}
 
     - name: Install xmlstartlet and xmllint
       run: |

@@ -14,7 +14,7 @@ on:
       GO_VERSION:
         required: false
         type: string
-        default: '1.22'
+        default: '1.26'
 
     secrets:
       SLACK_WEBHOOK_URL:

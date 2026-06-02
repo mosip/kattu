@@ -59,6 +59,12 @@ jobs:
         run: |
           go test ./... -v -coverprofile=coverage.out
 
+      - name: Debug
+        run: |
+          pwd
+          ls -la
+          ls -la cmd/
+
       - name: Build Binary
         run: |
           mkdir -p build

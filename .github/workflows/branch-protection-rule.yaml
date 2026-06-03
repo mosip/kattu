@@ -22,6 +22,19 @@ on:
         type: boolean
         default: false
 
+      # ── Repo where custom rules + branch-protection.txt live ─
+      config_repo:
+        description: "Repo containing branching-rule/ config files e.g. your-org/release-script"
+        required: false
+        type: string
+        default: ""
+
+      config_repo_ref:
+        description: "Branch/ref of the config repo e.g. main"
+        required: false
+        type: string
+        default: "release-1.2.0.1"
+
     secrets:
       ACTION_PAT:
         required: true
@@ -114,9 +127,13 @@ jobs:
     if: needs.check-access.outputs.authorized == 'true'
 
     steps:
-      # ── Checkout repo to read custom rules file ─────────────
-      - name: Checkout
+      # ── Checkout config repo to read custom rules file ─────────
+      - name: Checkout config repo (release-script)
         uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.config_repo }}
+          ref:        ${{ inputs.config_repo_ref }}
+          token:      ${{ secrets.ACTION_PAT }}
 
       # ── Load rules — from file or hardcoded defaults ────────
       - name: "Load branch protection rules"

@@ -14,7 +14,7 @@ on:
         type: string
 
       # ── Rules mode: passed from caller choice input ──────────
-      # true  = read rules from branching-rule/custom-branch-protection-rules.yaml
+      # true  = read rules from release/branching-rule/custom-branch-protection-rule.yaml
       # false = use hardcoded default rules in this workflow
       use_custom_rules:
         description: "true = custom rules file | false = default hardcoded rules"
@@ -33,7 +33,7 @@ on:
         description: "Branch/ref of the config repo e.g. main"
         required: false
         type: string
-        default: "release-1.2.0.1"
+        default: "main"
 
     secrets:
       ACTION_PAT:
@@ -44,7 +44,7 @@ on:
 jobs:
   # ── STEP 1: Verify actor is a collaborator or team member ──
   check-access:
-    name: "🔍 Verify @${{ github.actor }} has access"
+    name: "[CHECK] Verify @${{ github.actor }} has access"
     runs-on: ubuntu-latest
     outputs:
       authorized: ${{ steps.verify.outputs.authorized }}
@@ -61,14 +61,14 @@ jobs:
           ORG=$(echo "$REPO" | cut -d'/' -f1)
           AUTHORIZED=false
 
-          echo "──────────────────────────────────────────"
+          echo "---"
           echo "Actor  : $ACTOR"
           echo "Repo   : $REPO"
           echo "Branch : ${{ inputs.branch_pattern }}"
-          echo "──────────────────────────────────────────"
+          echo "---"
 
           # ── Check 1: Is actor a collaborator on the target repo? ──
-          echo "▶ Checking collaborator access on $REPO ..."
+          echo ">> Checking collaborator access on $REPO ..."
           COLLAB_STATUS=$(curl -s -o /tmp/collab.json -w "%{http_code}" \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
@@ -78,15 +78,15 @@ jobs:
           echo "  Collaborator API status: $COLLAB_STATUS"
 
           if [ "$COLLAB_STATUS" = "204" ]; then
-            echo "  ✅ $ACTOR is a collaborator on $REPO"
+            echo "  [OK] $ACTOR is a collaborator on $REPO"
             AUTHORIZED=true
           else
-            echo "  ℹ️  $ACTOR is NOT a collaborator on $REPO"
+            echo "  [INFO]  $ACTOR is NOT a collaborator on $REPO"
           fi
 
           # ── Check 2: Is actor an active member of the allowed team? ──
           if [ "$AUTHORIZED" = "false" ] && [ -n "$TEAM" ]; then
-            echo "▶ Checking team membership in $ORG/$TEAM ..."
+            echo ">> Checking team membership in $ORG/$TEAM ..."
             TEAM_STATUS=$(curl -s -o /tmp/team.json -w "%{http_code}" \
               -H "Authorization: Bearer $GH_TOKEN" \
               -H "Accept: application/vnd.github+json" \
@@ -99,19 +99,19 @@ jobs:
               STATE=$(cat /tmp/team.json | jq -r '.state // "none"')
               echo "  Membership state: $STATE"
               if [ "$STATE" = "active" ]; then
-                echo "  ✅ $ACTOR is an active member of team '$TEAM'"
+                echo "  [OK] $ACTOR is an active member of team '$TEAM'"
                 AUTHORIZED=true
               else
-                echo "  ℹ️  Membership state is '$STATE' (not active)"
+                echo "  [INFO]  Membership state is '$STATE' (not active)"
               fi
             else
-              echo "  ℹ️  $ACTOR is NOT a member of team '$TEAM'"
+              echo "  [INFO]  $ACTOR is NOT a member of team '$TEAM'"
             fi
           fi
 
-          echo "──────────────────────────────────────────"
+          echo "---"
           echo "Authorization result : $AUTHORIZED"
-          echo "──────────────────────────────────────────"
+          echo "---"
           echo "authorized=$AUTHORIZED" >> $GITHUB_OUTPUT
 
           if [ "$AUTHORIZED" = "false" ]; then
@@ -121,7 +121,7 @@ jobs:
 
   # ── STEP 2: Apply protection only if authorized ────────────
   apply-protection:
-    name: "🔒 ${{ inputs.target_repo }} → ${{ inputs.branch_pattern }}"
+    name: "[LOCK] ${{ inputs.target_repo }} → ${{ inputs.branch_pattern }}"
     runs-on: ubuntu-latest
     needs: check-access
     if: needs.check-access.outputs.authorized == 'true'
@@ -140,8 +140,8 @@ jobs:
         id: load-rules
         run: |
           if [ "${{ inputs.use_custom_rules }}" = "true" ]; then
-            CONFIG="branching-rule/custom-branch-protection-rules.yaml"
-            echo "📄 Loading rules from $CONFIG ..."
+            CONFIG="release/branching-rule/custom-branch-protection-rule.yaml"
+            echo "[FILE] Loading rules from $CONFIG ..."
 
             if [ ! -f "$CONFIG" ]; then
               echo "::error::Custom rules file not found at $CONFIG — create the file or uncheck 'use_custom_rules'"
@@ -151,7 +151,7 @@ jobs:
             python3 - <<'EOF'
           import yaml, os
 
-          with open("branching-rule/custom-branch-protection-rules.yaml") as f:
+          with open("release/branching-rule/custom-branch-protection-rule.yaml") as f:
             config = yaml.safe_load(f)
 
           rules = config.get("rules", {})
@@ -174,11 +174,11 @@ jobs:
           out("deletions",    str(rules.get("allow_deletions", False)).lower())
           out("push_users",   rules.get("push_users", "gsasikumar,vishwa-vyom,ckm007"))
           out("push_teams",   rules.get("push_teams", ""))
-          print("✅ Custom rules loaded from file.")
+          print("[OK] Custom rules loaded from file.")
           EOF
 
           else
-            echo "⚙️  Using default hardcoded rules ..."
+            echo "[GEAR]  Using default hardcoded rules ..."
             echo "approvals=1"                              >> $GITHUB_OUTPUT
             echo "dismiss=false"                            >> $GITHUB_OUTPUT
             echo "codeowner=false"                          >> $GITHUB_OUTPUT
@@ -193,7 +193,7 @@ jobs:
             echo "deletions=false"                          >> $GITHUB_OUTPUT
             echo "push_users=gsasikumar,vishwa-vyom,ckm007" >> $GITHUB_OUTPUT
             echo "push_teams="                              >> $GITHUB_OUTPUT
-            echo "✅ Default rules loaded."
+            echo "[OK] Default rules loaded."
           fi
 
       # ── Check if identical rule already exists ──────────────
@@ -216,7 +216,7 @@ jobs:
 
           # No rule exists — go ahead and create
           if [ "$HTTP_STATUS" = "404" ]; then
-            echo "  ℹ️  No protection rule found — will create one."
+            echo "  [INFO]  No protection rule found — will create one."
             echo "already_protected=false" >> $GITHUB_OUTPUT
             exit 0
           fi
@@ -245,7 +245,7 @@ jobs:
 
           echo ""
           echo "  Field               Existing      Desired"
-          echo "  ──────────────────────────────────────────"
+          echo "  ---"
           echo "  approvals         : $APPROVALS         → ${{ steps.load-rules.outputs.approvals }}"
           echo "  enforce_admins    : $ENFORCE       → ${{ steps.load-rules.outputs.enforce }}"
           echo "  conversation_res  : $CONVERSATION       → ${{ steps.load-rules.outputs.conversation }}"
@@ -262,29 +262,29 @@ jobs:
              [ "$DELETIONS"      = "${{ steps.load-rules.outputs.deletions }}"    ] && \
              [ "$EXISTING_USERS" = "$DESIRED_USERS"                              ]; then
 
-            echo "────────────────────────────────────────────────────────────"
+            echo "---──────────────────"
             echo ""
-            echo "  ⏭️  Branch '${{ inputs.branch_pattern }}'"
+            echo "  [SKIP]  Branch '${{ inputs.branch_pattern }}'"
             echo "      on repo '${{ inputs.target_repo }}'"
             echo "      already has the correct branch protection rules."
             echo ""
-            echo "  ✅ No changes were made."
+            echo "  [OK] No changes were made."
             echo ""
-            echo "────────────────────────────────────────────────────────────"
+            echo "---──────────────────"
             echo "already_protected=true" >> $GITHUB_OUTPUT
 
             cat >> $GITHUB_STEP_SUMMARY <<EOF
-          ## ⏭️ Branch Protection Already Exists
+          ## [SKIP] Branch Protection Already Exists
 
           | | |
           |---|---|
           | **Repo** | \`${{ inputs.target_repo }}\` |
           | **Branch** | \`${{ inputs.branch_pattern }}\` |
-          | **Status** | ✅ Identical rules already applied — no changes made |
+          | **Status** | [OK] Identical rules already applied — no changes made |
           | **Triggered by** | \`@${{ github.actor }}\` |
           EOF
           else
-            echo "  ℹ️  Rule differs from desired state — will apply."
+            echo "  [INFO]  Rule differs from desired state — will apply."
             echo "already_protected=false" >> $GITHUB_OUTPUT
           fi
 
@@ -303,7 +303,7 @@ jobs:
           VALID_USERS=()
           VALID_TEAMS=()
 
-          echo "▶ Checking each user is a collaborator on $REPO ..."
+          echo ">> Checking each user is a collaborator on $REPO ..."
           IFS=',' read -ra USERS <<< "$PUSH_USERS"
           for USER in "${USERS[@]}"; do
             USER=$(echo "$USER" | xargs)   # trim spaces
@@ -314,10 +314,10 @@ jobs:
               "https://api.github.com/repos/$REPO/collaborators/$USER")
 
             if [ "$STATUS" = "204" ]; then
-              echo "  ✅ $USER — is a collaborator, will be added to push restrictions"
+              echo "  [OK] $USER — is a collaborator, will be added to push restrictions"
               VALID_USERS+=("\"$USER\"")
             else
-              echo "  ⚠️  $USER — NOT a collaborator on $REPO (HTTP $STATUS)"
+              echo "  [WARN]  $USER — NOT a collaborator on $REPO (HTTP $STATUS)"
               echo "::warning::$USER is not a collaborator on $REPO — excluded from push restrictions. Add them as a collaborator first."
             fi
           done
@@ -327,7 +327,7 @@ jobs:
             for TEAM in "${TEAMS[@]}"; do
               TEAM=$(echo "$TEAM" | xargs)
               VALID_TEAMS+=("\"$TEAM\"")
-              echo "  ✅ Team '$TEAM' added to push restrictions"
+              echo "  [OK] Team '$TEAM' added to push restrictions"
             done
           fi
 
@@ -352,7 +352,7 @@ jobs:
           GH_TOKEN: ${{ secrets.ACTION_PAT }}
           REPO:     ${{ inputs.target_repo }}
         run: |
-          echo "▶ Reading workflow files in $REPO to discover status checks ..."
+          echo ">> Reading workflow files in $REPO to discover status checks ..."
           echo "  Jobs using maven-build.yml  → <job-id> / maven-build"
           echo "  Jobs using docker-build.yml → <SERVICE_NAME> / build-dockers"
           echo ""
@@ -369,7 +369,7 @@ jobs:
             > /tmp/wf_list.tsv 2>/dev/null || true
 
           if [ ! -s /tmp/wf_list.tsv ]; then
-            echo "  ℹ️  No workflow files found in $REPO — proceeding without status checks."
+            echo "  [INFO]  No workflow files found in $REPO — proceeding without status checks."
             echo 'status_json={"strict": false, "contexts": []}' >> $GITHUB_OUTPUT
             exit 0
           fi
@@ -427,19 +427,19 @@ jobs:
                     check = f"{svc} / {suffix}"
                     if check not in checks:
                       checks.append(check)
-                      print(f"  ✅ Found: {check}")
+                      print(f"  [OK] Found: {check}")
               else:
                 # Non-matrix job: "<job-id> / maven-build"
                 check = f"{job_id} / {suffix}"
                 if check not in checks:
                   checks.append(check)
-                  print(f"  ✅ Found: {check}")
+                  print(f"  [OK] Found: {check}")
 
           if not checks:
-            print("  ℹ️  No maven-build or docker-build jobs found — proceeding without status checks.")
+            print("  [INFO]  No maven-build or docker-build jobs found — proceeding without status checks.")
             status = {"strict": False, "contexts": []}
           else:
-            print(f"\n  ✅ {len(checks)} status check(s) will be required on PRs")
+            print(f"\n  [OK] {len(checks)} status check(s) will be required on PRs")
             status = {"strict": True, "contexts": checks}
 
           with open("/tmp/status_output.json", "w") as f:
@@ -516,19 +516,19 @@ jobs:
             exit 1
           fi
 
-          echo "✅ Branch protection applied successfully."
+          echo "[OK] Branch protection applied successfully."
 
       - name: "Job summary"
         if: steps.check-existing.outputs.already_protected == 'false' && success()
         run: |
           cat >> $GITHUB_STEP_SUMMARY <<EOF
-          ## ✅ Branch Protection Applied
+          ## [OK] Branch Protection Applied
 
           | | |
           |---|---|
           | **Repo** | \`${{ inputs.target_repo }}\` |
           | **Branch** | \`${{ inputs.branch_pattern }}\` |
-          | **Rules mode** | ${{ inputs.use_custom_rules == true && '📄 Custom (custom-branch-protection-rules.yaml)' || '⚙️ Default' }} |
+          | **Rules mode** | ${{ inputs.use_custom_rules == true && '[FILE] Custom (custom-branch-protection-rules.yaml)' || '[GEAR] Default' }} |
           | **Triggered by** | \`@${{ github.actor }}\` |
 
           ### Rules applied

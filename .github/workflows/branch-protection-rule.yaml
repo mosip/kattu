@@ -13,9 +13,11 @@ on:
         required: true
         type: string
 
-      # ── NEW: toggle to use custom rules file ────────────────
+      # ── Rules mode: passed from caller choice input ──────────
+      # true  = read rules from branching-rule/custom-branch-protection-rules.yaml
+      # false = use hardcoded default rules in this workflow
       use_custom_rules:
-        description: "Use custom rules from branching-rule/custom-branch-protection-rules.yaml"
+        description: "true = custom rules file | false = default hardcoded rules"
         required: false
         type: boolean
         default: false
@@ -112,11 +114,11 @@ jobs:
     if: needs.check-access.outputs.authorized == 'true'
 
     steps:
-      # ── NEW: Checkout repo to read custom rules file ────────
+      # ── Checkout repo to read custom rules file ─────────────
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ── NEW: Load rules — from file or hardcoded defaults ───
+      # ── Load rules — from file or hardcoded defaults ────────
       - name: "Load branch protection rules"
         id: load-rules
         run: |
@@ -160,7 +162,6 @@ jobs:
 
           else
             echo "⚙️  Using default hardcoded rules ..."
-            # ── These match the existing hardcoded defaults below ──
             echo "approvals=1"                              >> $GITHUB_OUTPUT
             echo "dismiss=false"                            >> $GITHUB_OUTPUT
             echo "codeowner=false"                          >> $GITHUB_OUTPUT
@@ -321,30 +322,116 @@ jobs:
           echo "users_json=$USERS_JSON" >> $GITHUB_OUTPUT
           echo "teams_json=$TEAMS_JSON" >> $GITHUB_OUTPUT
 
-      # ── Build status checks payload block ───────────────────
-      - name: "Build status checks payload"
+      # ── Auto-discover status checks from workflow files ──────
+      # Reads .github/workflows/*.yml in the TARGET repo.
+      # Jobs using maven-build.yml  → "<job-id> / maven-build"
+      # Jobs using docker-build.yml → "<SERVICE_NAME> / build-dockers"
+      # This is exactly what GitHub branch protection UI shows.
+      # If none found → proceeds without failure.
+      - name: "Auto-discover status checks"
         id: build-status
         if: steps.check-existing.outputs.already_protected == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.ACTION_PAT }}
+          REPO:     ${{ inputs.target_repo }}
         run: |
-          REQUIRE="${{ steps.load-rules.outputs.req_status }}"
-          STRICT="${{ steps.load-rules.outputs.strict }}"
-          CONTEXTS="${{ steps.load-rules.outputs.contexts }}"
+          echo "▶ Reading workflow files in $REPO to discover status checks ..."
+          echo "  Jobs using maven-build.yml  → <job-id> / maven-build"
+          echo "  Jobs using docker-build.yml → <SERVICE_NAME> / build-dockers"
+          echo ""
 
-          if [ "$REQUIRE" = "true" ] && [ -n "$CONTEXTS" ]; then
-            CONTEXTS_JSON=$(echo "$CONTEXTS" | tr ',' '\n' | \
-              sed 's/^ *//;s/ *$//' | jq -R . | jq -s .)
-            STATUS_JSON=$(jq -n \
-              --argjson strict "$STRICT" \
-              --argjson ctxs "$CONTEXTS_JSON" \
-              '{"strict": $strict, "contexts": $ctxs}')
-          elif [ "$REQUIRE" = "true" ]; then
-            STATUS_JSON=$(jq -n \
-              --argjson strict "$STRICT" \
-              '{"strict": $strict, "contexts": []}')
-          else
-            STATUS_JSON='{"strict": false, "contexts": []}'
+          mkdir -p /tmp/wf_files
+
+          # Fetch list of all .yml/.yaml workflow files from TARGET repo
+          curl -s \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$REPO/contents/.github/workflows" \
+            | jq -r '.[] | select(.name | test("\\.(yml|yaml)$")) | [.name, .download_url] | @tsv' \
+            > /tmp/wf_list.tsv 2>/dev/null || true
+
+          if [ ! -s /tmp/wf_list.tsv ]; then
+            echo "  ℹ️  No workflow files found in $REPO — proceeding without status checks."
+            echo 'status_json={"strict": false, "contexts": []}' >> $GITHUB_OUTPUT
+            exit 0
           fi
 
+          # Download each workflow file
+          while IFS=$'\t' read -r fname url; do
+            curl -s "$url" -o "/tmp/wf_files/$fname"
+          done < /tmp/wf_list.tsv
+
+          echo "  Downloaded $(ls /tmp/wf_files | wc -l) workflow file(s) — parsing ..."
+          echo ""
+
+          # Parse all workflow files with Python to extract check names
+          python3 << 'EOF'
+          import os, yaml, json
+
+          checks = []
+          wf_dir = "/tmp/wf_files"
+
+          for fname in sorted(os.listdir(wf_dir)):
+            fpath = os.path.join(wf_dir, fname)
+            try:
+              with open(fpath) as f:
+                wf = yaml.safe_load(f)
+            except Exception:
+              continue
+
+            if not isinstance(wf, dict) or "jobs" not in wf:
+              continue
+
+            for job_id, job in wf["jobs"].items():
+              if not isinstance(job, dict):
+                continue
+
+              uses = job.get("uses", "") or ""
+
+              is_maven  = "maven-build.yml"  in uses
+              is_docker = "docker-build.yml" in uses
+
+              if not is_maven and not is_docker:
+                continue
+
+              suffix = "maven-build" if is_maven else "build-dockers"
+
+              # Matrix job — name: ${{ matrix.SERVICE_NAME }}
+              # Each entry produces "<SERVICE_NAME> / build-dockers"
+              strategy = job.get("strategy") or {}
+              matrix   = strategy.get("matrix") or {}
+              includes = matrix.get("include") or []
+
+              if includes:
+                for entry in includes:
+                  svc = (entry.get("SERVICE_NAME") or "").strip()
+                  if svc:
+                    check = f"{svc} / {suffix}"
+                    if check not in checks:
+                      checks.append(check)
+                      print(f"  ✅ Found: {check}")
+              else:
+                # Non-matrix job: "<job-id> / maven-build"
+                check = f"{job_id} / {suffix}"
+                if check not in checks:
+                  checks.append(check)
+                  print(f"  ✅ Found: {check}")
+
+          if not checks:
+            print("  ℹ️  No maven-build or docker-build jobs found — proceeding without status checks.")
+            status = {"strict": False, "contexts": []}
+          else:
+            print(f"\n  ✅ {len(checks)} status check(s) will be required on PRs")
+            status = {"strict": True, "contexts": checks}
+
+          with open("/tmp/status_output.json", "w") as f:
+            json.dump(status, f)
+          EOF
+
+          STATUS_JSON=$(cat /tmp/status_output.json)
+          echo ""
+          echo "  Status JSON: $STATUS_JSON"
           echo "status_json=$STATUS_JSON" >> $GITHUB_OUTPUT
 
       - name: "Apply branch protection"

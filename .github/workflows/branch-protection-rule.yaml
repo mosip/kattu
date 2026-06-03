@@ -1,122 +1,531 @@
 name: Apply Branch Protection Rules
 
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
-
-      # ── Mode ────────────────────────────────────────────────
-      mode:
-        description: >
-          Choose mode:
-          'single' = apply to one repo (fill target_repo + branch_pattern below),
-          'bulk'   = apply to all repos in branching-rule/branch-protection.txt
-        required: true
-        type: choice
-        options:
-          - single
-          - bulk
-        default: single
-
-      # ── Single repo inputs (used when mode = single) ────────
       target_repo:
-        description: "[single mode] Repo to protect e.g. mosip/admin-services"
-        required: false
+        description: "Repo to protect, e.g. mosip/<mosip-repo>"
+        required: true
         type: string
-        default: ""
 
       branch_pattern:
-        description: "[single mode] Branch to protect e.g. release-1.2.x"
-        required: false
-        type: string
-        default: ""
-
-      # ── Rules choice (both modes) ───────────────────────────
-      rules:
-        description: "Choose which branch protection rules to apply"
+        description: "Branch to protect, e.g. release-1.1.x"
         required: true
-        type: choice
-        options:
-          - default
-          - custom
-        default: default
+        type: string
+
+      # ── Rules mode: passed from caller choice input ──────────
+      # true  = read rules from branching-rule/custom-branch-protection-rules.yaml
+      # false = use hardcoded default rules in this workflow
+      use_custom_rules:
+        description: "true = custom rules file | false = default hardcoded rules"
+        required: false
+        type: boolean
+        default: false
+
+    secrets:
+      ACTION_PAT:
+        required: true
+      ALLOWED_TEAM:
+        required: false
 
 jobs:
-  # ── SINGLE REPO MODE ──────────────────────────────────────
-  single-repo:
-    name: "Single → ${{ inputs.target_repo }} @ ${{ inputs.branch_pattern }}"
-    if: inputs.mode == 'single' && inputs.target_repo != '' && inputs.branch_pattern != ''
-    uses: Prafulrakhade/kattu/.github/workflows/branch-protection-rule.yaml@master-MOSIP-30370-branching-rule
-    with:
-      target_repo:      ${{ inputs.target_repo }}
-      branch_pattern:   ${{ inputs.branch_pattern }}
-      use_custom_rules: ${{ inputs.rules == 'custom' }}
-    secrets:
-      ACTION_PAT:   ${{ secrets.ACTION_PAT }}
-      ALLOWED_TEAM: ${{ secrets.ALLOWED_TEAM }}
-
-  # ── BULK MODE: parse branch-protection.txt ─────────────────
-  prepare-matrix:
-    name: "📋 Parse branch-protection.txt"
-    if: inputs.mode == 'bulk'
+  # ── STEP 1: Verify actor is a collaborator or team member ──
+  check-access:
+    name: "🔍 Verify @${{ github.actor }} has access"
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.parse.outputs.matrix }}
+      authorized: ${{ steps.verify.outputs.authorized }}
+
     steps:
+      - name: "Check collaborator or team membership"
+        id: verify
+        env:
+          GH_TOKEN: ${{ secrets.ACTION_PAT }}
+          ACTOR:    ${{ github.actor }}
+          REPO:     ${{ inputs.target_repo }}
+          TEAM:     ${{ secrets.ALLOWED_TEAM }}
+        run: |
+          ORG=$(echo "$REPO" | cut -d'/' -f1)
+          AUTHORIZED=false
+
+          echo "──────────────────────────────────────────"
+          echo "Actor  : $ACTOR"
+          echo "Repo   : $REPO"
+          echo "Branch : ${{ inputs.branch_pattern }}"
+          echo "──────────────────────────────────────────"
+
+          # ── Check 1: Is actor a collaborator on the target repo? ──
+          echo "▶ Checking collaborator access on $REPO ..."
+          COLLAB_STATUS=$(curl -s -o /tmp/collab.json -w "%{http_code}" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$REPO/collaborators/$ACTOR")
+
+          echo "  Collaborator API status: $COLLAB_STATUS"
+
+          if [ "$COLLAB_STATUS" = "204" ]; then
+            echo "  ✅ $ACTOR is a collaborator on $REPO"
+            AUTHORIZED=true
+          else
+            echo "  ℹ️  $ACTOR is NOT a collaborator on $REPO"
+          fi
+
+          # ── Check 2: Is actor an active member of the allowed team? ──
+          if [ "$AUTHORIZED" = "false" ] && [ -n "$TEAM" ]; then
+            echo "▶ Checking team membership in $ORG/$TEAM ..."
+            TEAM_STATUS=$(curl -s -o /tmp/team.json -w "%{http_code}" \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/orgs/$ORG/teams/$TEAM/memberships/$ACTOR")
+
+            echo "  Team membership API status: $TEAM_STATUS"
+
+            if [ "$TEAM_STATUS" = "200" ]; then
+              STATE=$(cat /tmp/team.json | jq -r '.state // "none"')
+              echo "  Membership state: $STATE"
+              if [ "$STATE" = "active" ]; then
+                echo "  ✅ $ACTOR is an active member of team '$TEAM'"
+                AUTHORIZED=true
+              else
+                echo "  ℹ️  Membership state is '$STATE' (not active)"
+              fi
+            else
+              echo "  ℹ️  $ACTOR is NOT a member of team '$TEAM'"
+            fi
+          fi
+
+          echo "──────────────────────────────────────────"
+          echo "Authorization result : $AUTHORIZED"
+          echo "──────────────────────────────────────────"
+          echo "authorized=$AUTHORIZED" >> $GITHUB_OUTPUT
+
+          if [ "$AUTHORIZED" = "false" ]; then
+            echo "::error::🚫 Access denied — @$ACTOR is neither a collaborator on '$REPO' nor an active member of the allowed team."
+            exit 1
+          fi
+
+  # ── STEP 2: Apply protection only if authorized ────────────
+  apply-protection:
+    name: "🔒 ${{ inputs.target_repo }} → ${{ inputs.branch_pattern }}"
+    runs-on: ubuntu-latest
+    needs: check-access
+    if: needs.check-access.outputs.authorized == 'true'
+
+    steps:
+      # ── Checkout repo to read custom rules file ─────────────
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Parse branch-protection.txt
-        id: parse
+      # ── Load rules — from file or hardcoded defaults ────────
+      - name: "Load branch protection rules"
+        id: load-rules
         run: |
-          python3 - << 'PYEOF'
-          import json, yaml, sys
+          if [ "${{ inputs.use_custom_rules }}" = "true" ]; then
+            CONFIG="branching-rule/custom-branch-protection-rules.yaml"
+            echo "📄 Loading rules from $CONFIG ..."
 
-          try:
-            with open("branching-rule/branch-protection.txt") as f:
-              config = yaml.safe_load(f)
-          except FileNotFoundError:
-            print("::error::branching-rule/branch-protection.txt not found!")
-            sys.exit(1)
+            if [ ! -f "$CONFIG" ]; then
+              echo "::error::Custom rules file not found at $CONFIG — create the file or uncheck 'use_custom_rules'"
+              exit 1
+            fi
 
-          entries = []
-          for item in config.get("repositories", []):
-            repo   = (item.get("repo")   or "").strip()
-            branch = (item.get("branch") or "").strip()
-            if not repo or not branch:
+            python3 - <<'EOF'
+          import yaml, os
+
+          with open("branching-rule/custom-branch-protection-rules.yaml") as f:
+            config = yaml.safe_load(f)
+
+          rules = config.get("rules", {})
+
+          def out(key, value):
+            with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"{key}={value}\n")
+
+          out("approvals",    rules.get("required_approving_review_count", 1))
+          out("dismiss",      str(rules.get("dismiss_stale_reviews", False)).lower())
+          out("codeowner",    str(rules.get("require_code_owner_reviews", False)).lower())
+          out("last_push",    str(rules.get("require_last_push_approval", False)).lower())
+          out("req_status",   str(rules.get("require_status_checks", False)).lower())
+          out("strict",       str(rules.get("strict_status_checks", False)).lower())
+          out("contexts",     rules.get("status_check_contexts", ""))
+          out("conversation", str(rules.get("required_conversation_resolution", True)).lower())
+          out("linear",       str(rules.get("required_linear_history", False)).lower())
+          out("enforce",      str(rules.get("enforce_admins", True)).lower())
+          out("force_push",   str(rules.get("allow_force_pushes", False)).lower())
+          out("deletions",    str(rules.get("allow_deletions", False)).lower())
+          out("push_users",   rules.get("push_users", "gsasikumar,vishwa-vyom,ckm007"))
+          out("push_teams",   rules.get("push_teams", ""))
+          print("✅ Custom rules loaded from file.")
+          EOF
+
+          else
+            echo "⚙️  Using default hardcoded rules ..."
+            echo "approvals=1"                              >> $GITHUB_OUTPUT
+            echo "dismiss=false"                            >> $GITHUB_OUTPUT
+            echo "codeowner=false"                          >> $GITHUB_OUTPUT
+            echo "last_push=false"                          >> $GITHUB_OUTPUT
+            echo "req_status=false"                         >> $GITHUB_OUTPUT
+            echo "strict=false"                             >> $GITHUB_OUTPUT
+            echo "contexts="                                >> $GITHUB_OUTPUT
+            echo "conversation=true"                        >> $GITHUB_OUTPUT
+            echo "linear=false"                             >> $GITHUB_OUTPUT
+            echo "enforce=true"                             >> $GITHUB_OUTPUT
+            echo "force_push=false"                         >> $GITHUB_OUTPUT
+            echo "deletions=false"                          >> $GITHUB_OUTPUT
+            echo "push_users=gsasikumar,vishwa-vyom,ckm007" >> $GITHUB_OUTPUT
+            echo "push_teams="                              >> $GITHUB_OUTPUT
+            echo "✅ Default rules loaded."
+          fi
+
+      # ── Check if identical rule already exists ──────────────
+      - name: "Check existing branch protection"
+        id: check-existing
+        env:
+          GH_TOKEN: ${{ secrets.ACTION_PAT }}
+        run: |
+          BRANCH_ENCODED=$(python3 -c \
+            "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1], safe=''))" \
+            "${{ inputs.branch_pattern }}")
+
+          HTTP_STATUS=$(curl -s -o /tmp/existing.json -w "%{http_code}" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${{ inputs.target_repo }}/branches/${BRANCH_ENCODED}/protection")
+
+          echo "Existing protection API status: $HTTP_STATUS"
+
+          # No rule exists — go ahead and create
+          if [ "$HTTP_STATUS" = "404" ]; then
+            echo "  ℹ️  No protection rule found — will create one."
+            echo "already_protected=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "::error::Unexpected API response: $HTTP_STATUS"
+            exit 1
+          fi
+
+          # Compare key fields with desired state
+          EXISTING=$(cat /tmp/existing.json)
+
+          APPROVALS=$(echo "$EXISTING"    | jq -r '.required_pull_request_reviews.required_approving_review_count // 0')
+          ENFORCE=$(echo "$EXISTING"      | jq -r '.enforce_admins.enabled // false')
+          CONVERSATION=$(echo "$EXISTING" | jq -r '.required_conversation_resolution.enabled // false')
+          FORCE_PUSH=$(echo "$EXISTING"   | jq -r '.allow_force_pushes.enabled // true')
+          DELETIONS=$(echo "$EXISTING"    | jq -r '.allow_deletions.enabled // true')
+
+          # Sort existing users alphabetically for stable comparison
+          EXISTING_USERS=$(echo "$EXISTING" | \
+            jq -r '[.restrictions.users[]?.login] | sort | join(",")' 2>/dev/null || echo "")
+
+          # Sort desired users the same way for stable comparison
+          DESIRED_USERS=$(echo "${{ steps.load-rules.outputs.push_users }}" | \
+            tr ',' '\n' | sed 's/^ *//;s/ *$//' | sort | tr '\n' ',' | sed 's/,$//')
+
+          echo ""
+          echo "  Field               Existing      Desired"
+          echo "  ──────────────────────────────────────────"
+          echo "  approvals         : $APPROVALS         → ${{ steps.load-rules.outputs.approvals }}"
+          echo "  enforce_admins    : $ENFORCE       → ${{ steps.load-rules.outputs.enforce }}"
+          echo "  conversation_res  : $CONVERSATION       → ${{ steps.load-rules.outputs.conversation }}"
+          echo "  force_pushes      : $FORCE_PUSH      → ${{ steps.load-rules.outputs.force_push }}"
+          echo "  allow_deletions   : $DELETIONS      → ${{ steps.load-rules.outputs.deletions }}"
+          echo "  restricted users  : $EXISTING_USERS"
+          echo "  desired users     : $DESIRED_USERS"
+          echo ""
+
+          if [ "$APPROVALS"      = "${{ steps.load-rules.outputs.approvals }}"    ] && \
+             [ "$ENFORCE"        = "${{ steps.load-rules.outputs.enforce }}"      ] && \
+             [ "$CONVERSATION"   = "${{ steps.load-rules.outputs.conversation }}" ] && \
+             [ "$FORCE_PUSH"     = "${{ steps.load-rules.outputs.force_push }}"   ] && \
+             [ "$DELETIONS"      = "${{ steps.load-rules.outputs.deletions }}"    ] && \
+             [ "$EXISTING_USERS" = "$DESIRED_USERS"                              ]; then
+
+            echo "────────────────────────────────────────────────────────────"
+            echo ""
+            echo "  ⏭️  Branch '${{ inputs.branch_pattern }}'"
+            echo "      on repo '${{ inputs.target_repo }}'"
+            echo "      already has the correct branch protection rules."
+            echo ""
+            echo "  ✅ No changes were made."
+            echo ""
+            echo "────────────────────────────────────────────────────────────"
+            echo "already_protected=true" >> $GITHUB_OUTPUT
+
+            cat >> $GITHUB_STEP_SUMMARY <<EOF
+          ## ⏭️ Branch Protection Already Exists
+
+          | | |
+          |---|---|
+          | **Repo** | \`${{ inputs.target_repo }}\` |
+          | **Branch** | \`${{ inputs.branch_pattern }}\` |
+          | **Status** | ✅ Identical rules already applied — no changes made |
+          | **Triggered by** | \`@${{ github.actor }}\` |
+          EOF
+          else
+            echo "  ℹ️  Rule differs from desired state — will apply."
+            echo "already_protected=false" >> $GITHUB_OUTPUT
+          fi
+
+      # ── Validate users are repo collaborators ───────────────
+      # GitHub API restrictions.users silently drops users who are
+      # not direct collaborators. This step checks each user first.
+      - name: "Validate push-restriction users are repo collaborators"
+        id: validate-users
+        if: steps.check-existing.outputs.already_protected == 'false'
+        env:
+          GH_TOKEN:   ${{ secrets.ACTION_PAT }}
+          REPO:       ${{ inputs.target_repo }}
+          PUSH_USERS: ${{ steps.load-rules.outputs.push_users }}
+          PUSH_TEAMS: ${{ steps.load-rules.outputs.push_teams }}
+        run: |
+          VALID_USERS=()
+          VALID_TEAMS=()
+
+          echo "▶ Checking each user is a collaborator on $REPO ..."
+          IFS=',' read -ra USERS <<< "$PUSH_USERS"
+          for USER in "${USERS[@]}"; do
+            USER=$(echo "$USER" | xargs)   # trim spaces
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/$REPO/collaborators/$USER")
+
+            if [ "$STATUS" = "204" ]; then
+              echo "  ✅ $USER — is a collaborator, will be added to push restrictions"
+              VALID_USERS+=("\"$USER\"")
+            else
+              echo "  ⚠️  $USER — NOT a collaborator on $REPO (HTTP $STATUS)"
+              echo "::warning::$USER is not a collaborator on $REPO — excluded from push restrictions. Add them as a collaborator first."
+            fi
+          done
+
+          if [ -n "$PUSH_TEAMS" ]; then
+            IFS=',' read -ra TEAMS <<< "$PUSH_TEAMS"
+            for TEAM in "${TEAMS[@]}"; do
+              TEAM=$(echo "$TEAM" | xargs)
+              VALID_TEAMS+=("\"$TEAM\"")
+              echo "  ✅ Team '$TEAM' added to push restrictions"
+            done
+          fi
+
+          USERS_JSON=$(IFS=,; echo "[${VALID_USERS[*]}]")
+          TEAMS_JSON=$(IFS=,; echo "[${VALID_TEAMS[*]}]")
+          echo ""
+          echo "  Push restriction users JSON : $USERS_JSON"
+          echo "  Push restriction teams JSON : $TEAMS_JSON"
+          echo "users_json=$USERS_JSON" >> $GITHUB_OUTPUT
+          echo "teams_json=$TEAMS_JSON" >> $GITHUB_OUTPUT
+
+      # ── Auto-discover status checks from workflow files ──────
+      # Reads .github/workflows/*.yml in the TARGET repo.
+      # Jobs using maven-build.yml  → "<job-id> / maven-build"
+      # Jobs using docker-build.yml → "<SERVICE_NAME> / build-dockers"
+      # This is exactly what GitHub branch protection UI shows.
+      # If none found → proceeds without failure.
+      - name: "Auto-discover status checks"
+        id: build-status
+        if: steps.check-existing.outputs.already_protected == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.ACTION_PAT }}
+          REPO:     ${{ inputs.target_repo }}
+        run: |
+          echo "▶ Reading workflow files in $REPO to discover status checks ..."
+          echo "  Jobs using maven-build.yml  → <job-id> / maven-build"
+          echo "  Jobs using docker-build.yml → <SERVICE_NAME> / build-dockers"
+          echo ""
+
+          mkdir -p /tmp/wf_files
+
+          # Fetch list of all .yml/.yaml workflow files from TARGET repo
+          curl -s \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$REPO/contents/.github/workflows" \
+            | jq -r '.[] | select(.name | test("\\.(yml|yaml)$")) | [.name, .download_url] | @tsv' \
+            > /tmp/wf_list.tsv 2>/dev/null || true
+
+          if [ ! -s /tmp/wf_list.tsv ]; then
+            echo "  ℹ️  No workflow files found in $REPO — proceeding without status checks."
+            echo 'status_json={"strict": false, "contexts": []}' >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Download each workflow file
+          while IFS=$'\t' read -r fname url; do
+            curl -s "$url" -o "/tmp/wf_files/$fname"
+          done < /tmp/wf_list.tsv
+
+          echo "  Downloaded $(ls /tmp/wf_files | wc -l) workflow file(s) — parsing ..."
+          echo ""
+
+          # Parse all workflow files with Python to extract check names
+          python3 << 'EOF'
+          import os, yaml, json
+
+          checks = []
+          wf_dir = "/tmp/wf_files"
+
+          for fname in sorted(os.listdir(wf_dir)):
+            fpath = os.path.join(wf_dir, fname)
+            try:
+              with open(fpath) as f:
+                wf = yaml.safe_load(f)
+            except Exception:
               continue
-            entries.append({
-              "target_repo":    repo,
-              "branch_pattern": branch
-            })
 
-          if not entries:
-            print("::error::No valid entries found in branch-protection.txt!")
-            sys.exit(1)
+            if not isinstance(wf, dict) or "jobs" not in wf:
+              continue
 
-          print(f"Found {len(entries)} repo(s) to protect:")
-          for e in entries:
-            print(f"  {e['target_repo']}  →  {e['branch_pattern']}")
+            for job_id, job in wf["jobs"].items():
+              if not isinstance(job, dict):
+                continue
 
-          with open("/tmp/matrix.json", "w") as f:
-            f.write(json.dumps({"include": entries}))
-          PYEOF
+              uses = job.get("uses", "") or ""
 
-          echo "matrix=$(cat /tmp/matrix.json)" >> $GITHUB_OUTPUT
+              is_maven  = "maven-build.yml"  in uses
+              is_docker = "docker-build.yml" in uses
 
-  # ── BULK MODE: apply per repo ──────────────────────────────
-  bulk-apply:
-    name: "Bulk → ${{ matrix.target_repo }} @ ${{ matrix.branch_pattern }}"
-    needs: prepare-matrix
-    # No extra if condition needed — prepare-matrix already gates on bulk mode
-    # and only runs when mode == 'bulk', so this always runs after it succeeds
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJson(needs.prepare-matrix.outputs.matrix) }}
-    uses: Prafulrakhade/kattu/.github/workflows/branch-protection-rule.yaml@master-MOSIP-30370-branching-rule
-    with:
-      target_repo:      ${{ matrix.target_repo }}
-      branch_pattern:   ${{ matrix.branch_pattern }}
-      use_custom_rules: ${{ inputs.rules == 'custom' }}
-    secrets:
-      ACTION_PAT:   ${{ secrets.ACTION_PAT }}
-      ALLOWED_TEAM: ${{ secrets.ALLOWED_TEAM }}
+              if not is_maven and not is_docker:
+                continue
+
+              suffix = "maven-build" if is_maven else "build-dockers"
+
+              # Matrix job — name: ${{ matrix.SERVICE_NAME }}
+              # Each entry produces "<SERVICE_NAME> / build-dockers"
+              strategy = job.get("strategy") or {}
+              matrix   = strategy.get("matrix") or {}
+              includes = matrix.get("include") or []
+
+              if includes:
+                for entry in includes:
+                  svc = (entry.get("SERVICE_NAME") or "").strip()
+                  if svc:
+                    check = f"{svc} / {suffix}"
+                    if check not in checks:
+                      checks.append(check)
+                      print(f"  ✅ Found: {check}")
+              else:
+                # Non-matrix job: "<job-id> / maven-build"
+                check = f"{job_id} / {suffix}"
+                if check not in checks:
+                  checks.append(check)
+                  print(f"  ✅ Found: {check}")
+
+          if not checks:
+            print("  ℹ️  No maven-build or docker-build jobs found — proceeding without status checks.")
+            status = {"strict": False, "contexts": []}
+          else:
+            print(f"\n  ✅ {len(checks)} status check(s) will be required on PRs")
+            status = {"strict": True, "contexts": checks}
+
+          with open("/tmp/status_output.json", "w") as f:
+            json.dump(status, f)
+          EOF
+
+          STATUS_JSON=$(cat /tmp/status_output.json)
+          echo ""
+          echo "  Status JSON: $STATUS_JSON"
+          echo "status_json=$STATUS_JSON" >> $GITHUB_OUTPUT
+
+      - name: "Apply branch protection"
+        if: steps.check-existing.outputs.already_protected == 'false'
+        env:
+          GH_TOKEN:    ${{ secrets.ACTION_PAT }}
+          USERS_JSON:  ${{ steps.validate-users.outputs.users_json }}
+          TEAMS_JSON:  ${{ steps.validate-users.outputs.teams_json }}
+          STATUS_JSON: ${{ steps.build-status.outputs.status_json }}
+        run: |
+          BRANCH_ENCODED=$(python3 -c \
+            "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1], safe=''))" \
+            "${{ inputs.branch_pattern }}")
+
+          PAYLOAD=$(jq -n \
+            --argjson users       "$USERS_JSON" \
+            --argjson teams       "$TEAMS_JSON" \
+            --argjson status      "$STATUS_JSON" \
+            --argjson approvals   ${{ steps.load-rules.outputs.approvals }} \
+            --argjson dismiss     ${{ steps.load-rules.outputs.dismiss }} \
+            --argjson codeowner   ${{ steps.load-rules.outputs.codeowner }} \
+            --argjson last_push   ${{ steps.load-rules.outputs.last_push }} \
+            --argjson enforce     ${{ steps.load-rules.outputs.enforce }} \
+            --argjson conv_res    ${{ steps.load-rules.outputs.conversation }} \
+            --argjson force_push  ${{ steps.load-rules.outputs.force_push }} \
+            --argjson deletions   ${{ steps.load-rules.outputs.deletions }} \
+            --argjson linear      ${{ steps.load-rules.outputs.linear }} \
+            '{
+              "required_pull_request_reviews": {
+                "required_approving_review_count": $approvals,
+                "dismiss_stale_reviews": $dismiss,
+                "require_code_owner_reviews": $codeowner,
+                "require_last_push_approval": $last_push
+              },
+              "required_status_checks": $status,
+              "required_conversation_resolution": $conv_res,
+              "enforce_admins": $enforce,
+              "restrictions": {
+                "users": $users,
+                "teams": $teams,
+                "apps": []
+              },
+              "allow_force_pushes": $force_push,
+              "allow_deletions": $deletions,
+              "required_linear_history": $linear,
+              "block_creations": false
+            }')
+
+          echo "Payload:"
+          echo "$PAYLOAD" | jq .
+
+          HTTP_STATUS=$(curl -s -o /tmp/api_response.json -w "%{http_code}" \
+            -X PUT \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${{ inputs.target_repo }}/branches/${BRANCH_ENCODED}/protection" \
+            -d "$PAYLOAD")
+
+          echo "HTTP Status : $HTTP_STATUS"
+          cat /tmp/api_response.json | jq .
+
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "::error::GitHub API returned HTTP $HTTP_STATUS — see response above"
+            exit 1
+          fi
+
+          echo "✅ Branch protection applied successfully."
+
+      - name: "Job summary"
+        if: steps.check-existing.outputs.already_protected == 'false' && success()
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY <<EOF
+          ## ✅ Branch Protection Applied
+
+          | | |
+          |---|---|
+          | **Repo** | \`${{ inputs.target_repo }}\` |
+          | **Branch** | \`${{ inputs.branch_pattern }}\` |
+          | **Rules mode** | ${{ inputs.use_custom_rules == true && '📄 Custom (custom-branch-protection-rules.yaml)' || '⚙️ Default' }} |
+          | **Triggered by** | \`@${{ github.actor }}\` |
+
+          ### Rules applied
+          | Rule | Value |
+          |---|---|
+          | Required approvals | ${{ steps.load-rules.outputs.approvals }} |
+          | Dismiss stale reviews | ${{ steps.load-rules.outputs.dismiss }} |
+          | Require CODEOWNER | ${{ steps.load-rules.outputs.codeowner }} |
+          | Require status checks | ${{ steps.load-rules.outputs.req_status }} |
+          | Require conversation resolution | ${{ steps.load-rules.outputs.conversation }} |
+          | Do not allow bypassing (admins) | ${{ steps.load-rules.outputs.enforce }} |
+          | Restrict who can push (users) | ${{ steps.load-rules.outputs.push_users }} |
+          | Restrict who can push (teams) | ${{ steps.load-rules.outputs.push_teams }} |
+          | Force pushes | ${{ steps.load-rules.outputs.force_push }} |
+          | Branch deletion | ${{ steps.load-rules.outputs.deletions }} |
+          | Linear history | ${{ steps.load-rules.outputs.linear }} |
+          EOF

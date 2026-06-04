@@ -125,7 +125,7 @@ jobs:
               echo "::error::Custom rules file not found at $CONFIG"
               exit 1
             fi
-            echo "aW1wb3J0IG9zCgpydWxlcyA9IHt9CmNvbmZpZ19maWxlID0gInJlbGVhc2UvYnJhbmNoaW5nLXJ1bGUvY3VzdG9tLWJyYW5jaC1wcm90ZWN0aW9uLXJ1bGUueWFtbCIKCndpdGggb3Blbihjb25maWdfZmlsZSkgYXMgZjoKICAgIGluX3J1bGVzID0gRmFsc2UKICAgIGZvciBsaW5lIGluIGY6CiAgICAgICAgc3RyaXBwZWQgPSBsaW5lLnN0cmlwKCkKICAgICAgICBpZiBzdHJpcHBlZCA9PSAicnVsZXM6IjoKICAgICAgICAgICAgaW5fcnVsZXMgPSBUcnVlCiAgICAgICAgICAgIGNvbnRpbnVlCiAgICAgICAgaWYgaW5fcnVsZXMgYW5kIHN0cmlwcGVkIGFuZCBub3Qgc3RyaXBwZWQuc3RhcnRzd2l0aCgiIyIpOgogICAgICAgICAgICBpZiAiOiIgaW4gc3RyaXBwZWQ6CiAgICAgICAgICAgICAgICBrZXksIF8sIHZhbCA9IHN0cmlwcGVkLnBhcnRpdGlvbigiOiIpCiAgICAgICAgICAgICAgICBydWxlc1trZXkuc3RyaXAoKV0gPSB2YWwuc3RyaXAoKS5zdHJpcCgnIicpLnN0cmlwKCInIikKCmRlZiBvdXQoa2V5LCB2YWx1ZSk6CiAgICB3aXRoIG9wZW4ob3MuZW52aXJvblsiR0lUSFVCX09VVFBVVCJdLCAiYSIpIGFzIGY6CiAgICAgICAgZi53cml0ZShrZXkgKyAiPSIgKyBzdHIodmFsdWUpICsgIlxuIikKCm91dCgiYXBwcm92YWxzIiwgICAgcnVsZXMuZ2V0KCJyZXF1aXJlZF9hcHByb3ZpbmdfcmV2aWV3X2NvdW50IiwgIjEiKSkKb3V0KCJkaXNtaXNzIiwgICAgICBydWxlcy5nZXQoImRpc21pc3Nfc3RhbGVfcmV2aWV3cyIsICJmYWxzZSIpLmxvd2VyKCkpCm91dCgiY29kZW93bmVyIiwgICAgcnVsZXMuZ2V0KCJyZXF1aXJlX2NvZGVfb3duZXJfcmV2aWV3cyIsICJmYWxzZSIpLmxvd2VyKCkpCm91dCgibGFzdF9wdXNoIiwgICAgcnVsZXMuZ2V0KCJyZXF1aXJlX2xhc3RfcHVzaF9hcHByb3ZhbCIsICJmYWxzZSIpLmxvd2VyKCkpCm91dCgicmVxX3N0YXR1cyIsICAgcnVsZXMuZ2V0KCJyZXF1aXJlX3N0YXR1c19jaGVja3MiLCAiZmFsc2UiKS5sb3dlcigpKQpvdXQoInN0cmljdCIsICAgICAgIHJ1bGVzLmdldCgic3RyaWN0X3N0YXR1c19jaGVja3MiLCAiZmFsc2UiKS5sb3dlcigpKQpvdXQoImNvbnRleHRzIiwgICAgIHJ1bGVzLmdldCgic3RhdHVzX2NoZWNrX2NvbnRleHRzIiwgIiIpKQpvdXQoImNvbnZlcnNhdGlvbiIsIHJ1bGVzLmdldCgicmVxdWlyZWRfY29udmVyc2F0aW9uX3Jlc29sdXRpb24iLCAidHJ1ZSIpLmxvd2VyKCkpCm91dCgibGluZWFyIiwgICAgICAgcnVsZXMuZ2V0KCJyZXF1aXJlZF9saW5lYXJfaGlzdG9yeSIsICJmYWxzZSIpLmxvd2VyKCkpCm91dCgiZW5mb3JjZSIsICAgICAgcnVsZXMuZ2V0KCJlbmZvcmNlX2FkbWlucyIsICJ0cnVlIikubG93ZXIoKSkKb3V0KCJmb3JjZV9wdXNoIiwgICBydWxlcy5nZXQoImFsbG93X2ZvcmNlX3B1c2hlcyIsICJmYWxzZSIpLmxvd2VyKCkpCm91dCgiZGVsZXRpb25zIiwgICAgcnVsZXMuZ2V0KCJhbGxvd19kZWxldGlvbnMiLCAiZmFsc2UiKS5sb3dlcigpKQpvdXQoInB1c2hfdXNlcnMiLCAgIHJ1bGVzLmdldCgicHVzaF91c2VycyIsICJnc2FzaWt1bWFyLHZpc2h3YS12eW9tLGNrbTAwNyIpKQpvdXQoInB1c2hfdGVhbXMiLCAgIHJ1bGVzLmdldCgicHVzaF90ZWFtcyIsICIiKSkKcHJpbnQoIltPS10gQ3VzdG9tIHJ1bGVzIGxvYWRlZCBmcm9tIGZpbGUuIikK" | base64 -d > /tmp/load_rules.py
+            echo "aW1wb3J0IG9zCgpydWxlcyA9IHt9CmNvbmZpZ19maWxlID0gInJlbGVhc2UvYnJhbmNoaW5nLXJ1bGUvY3VzdG9tLWJyYW5jaC1wcm90ZWN0aW9uLXJ1bGUueWFtbCIKCndpdGggb3Blbihjb25maWdfZmlsZSkgYXMgZjoKICAgIGluX3J1bGVzID0gRmFsc2UKICAgIGZvciBsaW5lIGluIGY6CiAgICAgICAgIyBSZW1vdmUgaW5saW5lIGNvbW1lbnRzIGJlZm9yZSBwcm9jZXNzaW5nCiAgICAgICAgc3RyaXBwZWQgPSBsaW5lLnN0cmlwKCkKICAgICAgICBpZiAiIyIgaW4gc3RyaXBwZWQ6CiAgICAgICAgICAgIHN0cmlwcGVkID0gc3RyaXBwZWRbOnN0cmlwcGVkLmluZGV4KCIjIildLnN0cmlwKCkKICAgICAgICBpZiBub3Qgc3RyaXBwZWQ6CiAgICAgICAgICAgIGNvbnRpbnVlCiAgICAgICAgaWYgc3RyaXBwZWQgPT0gInJ1bGVzOiI6CiAgICAgICAgICAgIGluX3J1bGVzID0gVHJ1ZQogICAgICAgICAgICBjb250aW51ZQogICAgICAgIGlmIGluX3J1bGVzIGFuZCBzdHJpcHBlZDoKICAgICAgICAgICAgaWYgIjoiIGluIHN0cmlwcGVkOgogICAgICAgICAgICAgICAga2V5LCBfLCB2YWwgPSBzdHJpcHBlZC5wYXJ0aXRpb24oIjoiKQogICAgICAgICAgICAgICAgcnVsZXNba2V5LnN0cmlwKCldID0gdmFsLnN0cmlwKCkuc3RyaXAoJyInKS5zdHJpcCgiJyIpCgpkZWYgb3V0KGtleSwgdmFsdWUpOgogICAgd2l0aCBvcGVuKG9zLmVudmlyb25bIkdJVEhVQl9PVVRQVVQiXSwgImEiKSBhcyBmOgogICAgICAgIGYud3JpdGUoa2V5ICsgIj0iICsgc3RyKHZhbHVlKSArICJcbiIpCgpvdXQoImFwcHJvdmFscyIsICAgIHJ1bGVzLmdldCgicmVxdWlyZWRfYXBwcm92aW5nX3Jldmlld19jb3VudCIsICIxIikpCm91dCgiZGlzbWlzcyIsICAgICAgcnVsZXMuZ2V0KCJkaXNtaXNzX3N0YWxlX3Jldmlld3MiLCAiZmFsc2UiKS5sb3dlcigpKQpvdXQoImNvZGVvd25lciIsICAgIHJ1bGVzLmdldCgicmVxdWlyZV9jb2RlX293bmVyX3Jldmlld3MiLCAiZmFsc2UiKS5sb3dlcigpKQpvdXQoImxhc3RfcHVzaCIsICAgIHJ1bGVzLmdldCgicmVxdWlyZV9sYXN0X3B1c2hfYXBwcm92YWwiLCAiZmFsc2UiKS5sb3dlcigpKQpvdXQoInJlcV9zdGF0dXMiLCAgIHJ1bGVzLmdldCgicmVxdWlyZV9zdGF0dXNfY2hlY2tzIiwgImZhbHNlIikubG93ZXIoKSkKb3V0KCJzdHJpY3QiLCAgICAgICBydWxlcy5nZXQoInN0cmljdF9zdGF0dXNfY2hlY2tzIiwgImZhbHNlIikubG93ZXIoKSkKb3V0KCJjb250ZXh0cyIsICAgICBydWxlcy5nZXQoInN0YXR1c19jaGVja19jb250ZXh0cyIsICIiKSkKb3V0KCJjb252ZXJzYXRpb24iLCBydWxlcy5nZXQoInJlcXVpcmVkX2NvbnZlcnNhdGlvbl9yZXNvbHV0aW9uIiwgInRydWUiKS5sb3dlcigpKQpvdXQoImxpbmVhciIsICAgICAgIHJ1bGVzLmdldCgicmVxdWlyZWRfbGluZWFyX2hpc3RvcnkiLCAiZmFsc2UiKS5sb3dlcigpKQpvdXQoImVuZm9yY2UiLCAgICAgIHJ1bGVzLmdldCgiZW5mb3JjZV9hZG1pbnMiLCAidHJ1ZSIpLmxvd2VyKCkpCm91dCgiZm9yY2VfcHVzaCIsICAgcnVsZXMuZ2V0KCJhbGxvd19mb3JjZV9wdXNoZXMiLCAiZmFsc2UiKS5sb3dlcigpKQpvdXQoImRlbGV0aW9ucyIsICAgIHJ1bGVzLmdldCgiYWxsb3dfZGVsZXRpb25zIiwgImZhbHNlIikubG93ZXIoKSkKb3V0KCJwdXNoX3VzZXJzIiwgICBydWxlcy5nZXQoInB1c2hfdXNlcnMiLCAiZ3Nhc2lrdW1hcix2aXNod2EtdnlvbSxja20wMDciKSkKb3V0KCJwdXNoX3RlYW1zIiwgICBydWxlcy5nZXQoInB1c2hfdGVhbXMiLCAiIikpCnByaW50KCJbT0tdIEN1c3RvbSBydWxlcyBsb2FkZWQgZnJvbSBmaWxlLiIpCg==" | base64 -d > /tmp/load_rules.py
             python3 /tmp/load_rules.py
           else
             echo "[INFO] Using default hardcoded rules ..."
@@ -320,21 +320,22 @@ jobs:
             RESTRICTIONS="null"
           fi
 
-          PAYLOAD=$(jq -n \
-            --argjson users      "$USERS_JSON" \
-            --argjson teams      "$TEAMS_JSON" \
-            --argjson status     "$STATUS_JSON" \
-            --argjson restr      "$RESTRICTIONS" \
-            --argjson approvals  ${{ steps.load-rules.outputs.approvals }} \
-            --argjson dismiss    ${{ steps.load-rules.outputs.dismiss }} \
-            --argjson codeowner  ${{ steps.load-rules.outputs.codeowner }} \
-            --argjson last_push  ${{ steps.load-rules.outputs.last_push }} \
-            --argjson enforce    ${{ steps.load-rules.outputs.enforce }} \
-            --argjson conv_res   ${{ steps.load-rules.outputs.conversation }} \
-            --argjson force_push ${{ steps.load-rules.outputs.force_push }} \
-            --argjson deletions  ${{ steps.load-rules.outputs.deletions }} \
-            --argjson linear     ${{ steps.load-rules.outputs.linear }} \
-            '{
+          # Build payload using environment variables to avoid line continuation issues
+          export JQ_USERS="$USERS_JSON"
+          export JQ_TEAMS="$TEAMS_JSON"
+          export JQ_STATUS="$STATUS_JSON"
+          export JQ_RESTR="$RESTRICTIONS"
+          export JQ_APPROVALS="${{ steps.load-rules.outputs.approvals }}"
+          export JQ_DISMISS="${{ steps.load-rules.outputs.dismiss }}"
+          export JQ_CODEOWNER="${{ steps.load-rules.outputs.codeowner }}"
+          export JQ_LAST_PUSH="${{ steps.load-rules.outputs.last_push }}"
+          export JQ_ENFORCE="${{ steps.load-rules.outputs.enforce }}"
+          export JQ_CONV_RES="${{ steps.load-rules.outputs.conversation }}"
+          export JQ_FORCE_PUSH="${{ steps.load-rules.outputs.force_push }}"
+          export JQ_DELETIONS="${{ steps.load-rules.outputs.deletions }}"
+          export JQ_LINEAR="${{ steps.load-rules.outputs.linear }}"
+
+          PAYLOAD=$(jq -n             --argjson users      "$JQ_USERS"             --argjson teams      "$JQ_TEAMS"             --argjson status     "$JQ_STATUS"             --argjson restr      "$JQ_RESTR"             --argjson approvals  "$JQ_APPROVALS"             --argjson dismiss    "$JQ_DISMISS"             --argjson codeowner  "$JQ_CODEOWNER"             --argjson last_push  "$JQ_LAST_PUSH"             --argjson enforce    "$JQ_ENFORCE"             --argjson conv_res   "$JQ_CONV_RES"             --argjson force_push "$JQ_FORCE_PUSH"             --argjson deletions  "$JQ_DELETIONS"             --argjson linear     "$JQ_LINEAR"             '{
               "required_pull_request_reviews": {
                 "required_approving_review_count": $approvals,
                 "dismiss_stale_reviews": $dismiss,

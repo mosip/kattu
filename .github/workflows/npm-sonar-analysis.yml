@@ -106,7 +106,7 @@ jobs:
             -Dsonar.projectKey=${{ secrets.ORG_KEY }}_${{ github.event.repository.name }} \
             -Dsonar.projectName=${{ github.event.repository.name }} \
             -Dsonar.organization=${{ secrets.ORG_KEY }} \
-            -Dsonar.login=${{ secrets.SONAR_TOKEN }} \
+            -Dsonar.token=${{ secrets.SONAR_TOKEN }} \
             -Dsonar.sources=${{ inputs.SONAR_SOURCES }} \
             -Dsonar.tests=${{ inputs.SONAR_TESTS }} \
             -Dsonar.test.inclusions=${{ inputs.SONAR_TEST_INCLUSIONS }} \

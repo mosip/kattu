@@ -20,7 +20,7 @@ This workflow accepts the following inputs:
 
 This workflow requires the following secrets to be set in your GitHub repository:
 - `SONAR_TOKEN`: The authentication token for accessing SonarQube.
-- `SONAR_ORGANIZATION`: The organization name on SonarQube.
+- `ORG-KEY`: The organization name on SonarCloud.
 - `SLACK_WEBHOOK_URL`: The URL for sending Slack notifications.
 
 ## Example Usage
@@ -58,7 +58,7 @@ jobs:
       PROJECT_NAME: "${{ github.event.repository.name }}"
     secrets:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      SONAR_ORGANIZATION: ${{ secrets.ORG_KEY }}
+      ORG_KEY: ${{ secrets.ORG_KEY }}
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
 ```
 

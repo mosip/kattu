@@ -54,42 +54,90 @@ jobs:
           TEAM: ${{ secrets.ALLOWED_TEAM }}
         run: |
           ORG=$(echo "$REPO" | cut -d'/' -f1)
+          OWNER=$(echo "$REPO" | cut -d'/' -f1)
           AUTHORIZED=false
 
           echo "Actor  : $ACTOR"
           echo "Repo   : $REPO"
           echo "Branch : ${{ inputs.branch_pattern }}"
 
-          COLLAB_STATUS=$(curl -s -o /tmp/collab.json -w "%{http_code}" \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/$REPO/collaborators/$ACTOR")
-
-          if [ "$COLLAB_STATUS" = "204" ]; then
-            echo "[OK] $ACTOR is a collaborator on $REPO"
+          # Check 0: Is actor the repo owner?
+          # GitHub collaborator API returns 404 for repo owners — handle separately
+          if [ "$ACTOR" = "$OWNER" ]; then
+            echo "[OK] $ACTOR is the owner of $REPO — full access granted"
             AUTHORIZED=true
-          else
-            echo "[INFO] $ACTOR is NOT a collaborator on $REPO"
           fi
 
-          if [ "$AUTHORIZED" = "false" ] && [ -n "$TEAM" ]; then
-            TEAM_STATUS=$(curl -s -o /tmp/team.json -w "%{http_code}" \
+          # Check 1: Is actor a collaborator with Admin or Maintain role?
+          # Triage, Read, Write and outside collaborators are NOT allowed.
+          if [ "$AUTHORIZED" = "false" ]; then
+            PERM_STATUS=$(curl -s -o /tmp/perm.json -w "%{http_code}" \
               -H "Authorization: Bearer $GH_TOKEN" \
               -H "Accept: application/vnd.github+json" \
               -H "X-GitHub-Api-Version: 2022-11-28" \
-              "https://api.github.com/orgs/$ORG/teams/$TEAM/memberships/$ACTOR")
+              "https://api.github.com/repos/$REPO/collaborators/$ACTOR/permission")
 
-            if [ "$TEAM_STATUS" = "200" ]; then
-              STATE=$(cat /tmp/team.json | jq -r '.state // "none"')
-              if [ "$STATE" = "active" ]; then
-                echo "[OK] $ACTOR is an active member of team '$TEAM'"
+            if [ "$PERM_STATUS" = "200" ]; then
+              PERMISSION=$(cat /tmp/perm.json | jq -r '.permission // "none"')
+              ROLE_NAME=$(cat /tmp/perm.json | jq -r '.role_name // "none"')
+              echo "  Permission : $PERMISSION"
+              echo "  Role name  : $ROLE_NAME"
+
+              # Allow only admin or maintain — block triage, read, write, outside collaborators
+              # role_name is the most accurate field — use it for the check
+              if [ "$ROLE_NAME" = "admin" ] || [ "$ROLE_NAME" = "maintain" ]; then
+                echo "[OK] $ACTOR has '$ROLE_NAME' role on $REPO — authorized to create branch protection rules"
                 AUTHORIZED=true
               else
-                echo "[INFO] Membership state is '$STATE' (not active)"
+                echo "[DENIED] $ACTOR has '$ROLE_NAME' role on $REPO"
+                echo "[DENIED] Only 'admin' and 'maintain' roles can create branch protection rules"
+                echo "[DENIED] '$ROLE_NAME' role does not have sufficient permission"
               fi
             else
-              echo "[INFO] $ACTOR is NOT a member of team '$TEAM'"
+              echo "[INFO] $ACTOR is NOT a collaborator on $REPO"
+            fi
+          fi
+
+          # Check 2: Is actor a member of any team with Admin or Maintain role on this repo?
+          # This checks ALL teams on the repo, not just ALLOWED_TEAM.
+          if [ "$AUTHORIZED" = "false" ]; then
+            echo ">> Checking team roles on $REPO ..."
+
+            # Fetch all teams with access to this repo
+            TEAMS_RESP=$(curl -s -w "%{http_code}" -o /tmp/repo_teams.json \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/$REPO/teams?per_page=100")
+
+            if [ "$TEAMS_RESP" = "200" ]; then
+              # Get team slugs that have admin or maintain permission on this repo
+              ALLOWED_TEAM_SLUGS=$(cat /tmp/repo_teams.json | \
+                jq -r '.[] | select(.permission == "admin" or .permission == "maintain") | .slug')
+
+              for TEAM_SLUG in $ALLOWED_TEAM_SLUGS; do
+                # Check if actor is an active member of this team
+                MEMBER_STATUS=$(curl -s -o /tmp/member.json -w "%{http_code}" \
+                  -H "Authorization: Bearer $GH_TOKEN" \
+                  -H "Accept: application/vnd.github+json" \
+                  -H "X-GitHub-Api-Version: 2022-11-28" \
+                  "https://api.github.com/orgs/$ORG/teams/$TEAM_SLUG/memberships/$ACTOR")
+
+                if [ "$MEMBER_STATUS" = "200" ]; then
+                  STATE=$(cat /tmp/member.json | jq -r '.state // "none"')
+                  if [ "$STATE" = "active" ]; then
+                    echo "[OK] $ACTOR is an active member of team '$TEAM_SLUG' (Admin/Maintain) — authorized"
+                    AUTHORIZED=true
+                    break
+                  fi
+                fi
+              done
+
+              if [ "$AUTHORIZED" = "false" ]; then
+                echo "[INFO] $ACTOR is not a member of any Admin or Maintain team on $REPO"
+              fi
+            else
+              echo "[INFO] Could not fetch teams for $REPO (HTTP $TEAMS_RESP)"
             fi
           fi
 

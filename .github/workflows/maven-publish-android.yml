@@ -83,8 +83,15 @@ jobs:
           echo "BRANCH_NAME=$(echo ${{ github.ref }} | sed -e 's,.*/\(.*\),\1,')" >> $GITHUB_ENV
 
       - name: Import GPG key
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_SECRET: ${{ secrets.GPG_SECRET }}
         run: |
-          echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --passphrase "${{ secrets.GPG_SECRET }}" --pinentry-mode loopback --import
+          if [ -n "$GPG_PRIVATE_KEY" ]; then
+            echo "$GPG_PRIVATE_KEY" | gpg --batch --passphrase "$GPG_SECRET" --pinentry-mode loopback --import
+          else
+            echo "GPG_PRIVATE_KEY not set, skipping import"
+          fi
 
       - name: Install xmlstartlet and xmllint
         run: |

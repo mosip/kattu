@@ -53,10 +53,8 @@ jobs:
         echo "BRANCH_NAME=$(echo ${{ github.ref }} | sed -e 's,.*/\(.*\),\1,')" >> $GITHUB_ENV
 
     - name: Import GPG key
-      uses: crazy-max/ghaction-import-gpg@v6
-      with:
-        gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
-        passphrase: ${{ secrets.GPG_SECRET }}
+      run: |
+        echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --passphrase "${{ secrets.GPG_SECRET }}" --pinentry-mode loopback --import
 
     - name: Install xmlstartlet and xmllint
       run: |
@@ -98,6 +96,13 @@ jobs:
           echo "Pom file : $F"
           xmllint --xpath '/*[local-name()="project"]/*[local-name()="version"]' $F
         done
+
+    - name: Verify dependency signatures (simplify4u pgpverify)
+      run: |
+        cd ${{ inputs.SERVICE_LOCATION }} && mvn org.simplify4u.plugins:pgpverify-maven-plugin:1.19.1:check \
+          -DfailNoSignature=false \
+          -DverifySnapshots=false \
+          -s $GITHUB_WORKSPACE/settings.xml
 
     - name: Build with Maven
       run: cd ${{ inputs.SERVICE_LOCATION }} && mvn -U -B package -Dmaven.wagon.http.retryHandler.count=2 --file pom.xml -s $GITHUB_WORKSPACE/settings.xml

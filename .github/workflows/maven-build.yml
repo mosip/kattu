@@ -11,7 +11,11 @@ on:
         type: string
       MAVEN_NON_EXEC_ARTIFACTS:
         required: false
-        type: string 
+        type: string
+      FORCE_BUILD:
+        required: false
+        type: string
+        default: 'true'
     secrets:
       OSSRH_USER:
         required: true
@@ -31,26 +35,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
+
     - name: Set up JDK 21
       uses: actions/setup-java@v3
       with:
-        distribution: 'temurin'
+        distribution: temurin
         java-version: '21'
-        server-id: ossrh # Value of the distributionManagement/repository/id field of the pom.xml
-        settings-path: ${{ github.workspace }} # location for the settings.xml file
+        server-id: ossrh
+        settings-path: ${{ github.workspace }}
 
     - name: Cache local Maven repository
       uses: actions/cache@v4
       with:
         path: ~/.m2/repository
         key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-        restore-keys: |
-          ${{ runner.os }}-maven-
+        restore-keys: ${{ runner.os }}-maven-
 
     - name: Setup branch and env
-      run: |
-        # Strip git ref prefix from version
-        echo "BRANCH_NAME=$(echo ${{ github.ref }} | sed -e 's,.*/\(.*\),\1,')" >> $GITHUB_ENV
+      run: echo "BRANCH_NAME=$(echo ${{ github.ref }} | sed -e 's,.*/\(.*\),\1,')" >> $GITHUB_ENV
 
     - name: Import GPG key
       env:
@@ -63,7 +65,36 @@ jobs:
           echo "GPG_PRIVATE_KEY not set, skipping import"
         fi
 
-    - name: Install xmlstartlet and xmllint
+    - name: Check GPG key age
+      env:
+        GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        FORCE_BUILD: ${{ inputs.FORCE_BUILD }}
+      run: |
+        if [ -z "$GPG_PRIVATE_KEY" ]; then
+          echo "No GPG key imported, skipping age check"
+          exit 0
+        fi
+        CREATED=$(gpg --list-keys --with-colons 2>/dev/null | awk -F: '/^pub/{print $6; exit}')
+        if [ -z "$CREATED" ]; then
+          echo "Could not determine key creation date, skipping age check"
+          exit 0
+        fi
+        NOW=$(date +%s)
+        AGE_DAYS=$(( (NOW - CREATED) / 86400 ))
+        AGE_YEARS=$(echo "scale=1; $AGE_DAYS / 365" | bc)
+        echo "GPG key age: $AGE_DAYS days (~$AGE_YEARS years)"
+        if [ $AGE_DAYS -gt 1095 ]; then
+          if [ "$FORCE_BUILD" = "true" ]; then
+            echo "::warning::GPG key is over 3 years old ($AGE_YEARS years). FORCE_BUILD=true is set — build will continue but KEY ROTATION IS OVERDUE. Set FORCE_BUILD=false once the new key is in place."
+          else
+            echo "::error::GPG key is over 3 years old ($AGE_YEARS years). Rotate the signing key and update GPG_PRIVATE_KEY, or set FORCE_BUILD=true to override."
+            exit 1
+          fi
+        elif [ $AGE_DAYS -gt 730 ]; then
+          echo "::warning::GPG key is over 2 years old ($AGE_YEARS years). Schedule key rotation soon."
+        fi
+
+    - name: Install xmlstarlet and xmllint
       run: |
         sudo rm /etc/apt/sources.list.d/microsoft-prod.list
         sudo apt-get update
@@ -87,20 +118,13 @@ jobs:
     - name: Build check for name, url, and description in pom.xml
       run: |
         cd ${{ inputs.SERVICE_LOCATION }}
-        echo "Checking for project name in pom.xml"
         xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:name" -nl pom.xml | grep -q "."
-        echo "Project name found"
-        echo "Checking for project URL in pom.xml"
         xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:url" -nl pom.xml | grep -q "."
-        echo "Project url found"
-        echo "Checking for project description in pom.xml"
         xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:description" -nl pom.xml | grep -q "."
-        echo "Project description found"
 
-    - name: Validate pom.xml & settings.xml via xmllint
+    - name: Validate pom.xml via xmllint
       run: |
         find ${{ inputs.SERVICE_LOCATION }} -type f -name pom.xml | while read -r F; do
-          echo "Pom file : $F"
           xmllint --xpath '/*[local-name()="project"]/*[local-name()="version"]' $F
         done
 
@@ -118,49 +142,30 @@ jobs:
     - name: Debug - List all JARs and permissions
       if: ${{ !contains(github.ref, 'master') && !contains(github.ref, 'main') }}
       run: |
-        echo "=== All JAR files in target directories with permissions ==="
         find ${{ inputs.SERVICE_LOCATION }} -path '*/target/*' -name '*.jar' -type f -ls || echo "No JAR files found"
-        echo ""
-        echo "=== JAR files with executable bit set ==="
         find ${{ inputs.SERVICE_LOCATION }} -path '*/target/*' -name '*.jar' -type f -executable -ls || echo "No executable JARs found"
 
     - name: Ready the springboot executable artifacts
       if: ${{ !contains(github.ref, 'master') || !contains(github.ref, 'main') }}
-      run: |
-        ## FIND JARS & COPY ONLY EXECUTABLE JARs STORED UNDER TARGET DIRECTORY 
-        find ${{ inputs.SERVICE_LOCATION }} -path '*/target/*' -name '*.jar'  -type f  -executable -exec zip ${{ inputs.BUILD_ARTIFACT }}.zip {} +    
+      run: find ${{ inputs.SERVICE_LOCATION }} -path '*/target/*' -name '*.jar' -type f -executable -exec zip ${{ inputs.BUILD_ARTIFACT }}.zip {} +
 
     - name: Ready the springboot non-executable artifacts
       if: ${{ inputs.MAVEN_NON_EXEC_ARTIFACTS }}
       run: |
-        echo "Preparing non-executable artifacts for zipping..."
         IFS=',' read -ra ARTIFACTS <<< "${{ inputs.MAVEN_NON_EXEC_ARTIFACTS }}"
-
         for ARTIFACT in "${ARTIFACTS[@]}"; do
-          ARTIFACT=$(echo "$ARTIFACT" | xargs) # trim spaces
-          # Remove .jar extension to create base name for pattern matching
+          ARTIFACT=$(echo "$ARTIFACT" | xargs)
           BASE_NAME="${ARTIFACT%.jar}"
-          echo "Searching for artifact pattern: ${BASE_NAME}*.jar"
-  
-          # Search for versioned JARs, excluding sources, javadoc, and tests
           found_files=$(find ${{ inputs.SERVICE_LOCATION }} -type f -path "*/target/${BASE_NAME}*.jar" ! -executable 2>/dev/null \
-          | grep -Ev '(-sources|-javadoc|-tests)\.jar$' || true)
-  
+            | grep -Ev '(-sources|-javadoc|-tests)\.jar$' || true)
           if [ -n "$found_files" ]; then
-            echo "Found non-executable artifact(s):"
-            echo "$found_files"
-    
             while IFS= read -r file; do
-              if [ -f "$file" ]; then
-                echo "Adding to zip with full path: $file"
-                zip -r ${{ inputs.BUILD_ARTIFACT }}.zip "$file"
-              fi
+              [ -f "$file" ] && zip -r ${{ inputs.BUILD_ARTIFACT }}.zip "$file"
             done <<< "$found_files"
           else
-            echo "Warning: Non-executable artifact matching ${BASE_NAME}*.jar not found in any target directory"
+            echo "Warning: no non-executable artifact matching ${BASE_NAME}*.jar found"
           fi
         done
-        echo "Non-executable artifacts have been added to: ${{ inputs.BUILD_ARTIFACT }}.zip"
 
     - name: Upload the springboot jars
       if: ${{ !contains(github.ref, 'master') || !contains(github.ref, 'main') }}
@@ -168,11 +173,3 @@ jobs:
       with:
         name: ${{ inputs.BUILD_ARTIFACT }}
         path: ./${{ inputs.BUILD_ARTIFACT }}.zip
-
-    # - uses: 8398a7/action-slack@v3
-    #   with:
-    #     status: ${{ job.status }}
-    #     fields: repo,message,author,commit,workflow,job # selectable (default: repo,message)
-    #   env:
-    #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} # required
-    #   if: "${{ github.event_name != 'pull_request' && failure() }}" # Pick up events even if the job fails or is canceled.

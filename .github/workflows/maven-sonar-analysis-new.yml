@@ -52,13 +52,6 @@ jobs:
       - name: Setup env
         run: |
           echo "BRANCH_NAME=$(echo ${{ github.ref }} | sed -e 's,.*/\(.*\),\1,')" >> $GITHUB_ENV
-          echo "GPG_TTY=$(tty)" >> $GITHUB_ENV
-
-      - name: Import GPG
-        run: |
-          sudo apt-get --yes install gnupg2
-          gpg2 --import ./.github/keys/mosipgpgkey_pub.gpg
-          gpg2 --quiet --batch --passphrase=${{ secrets.GPG_SECRET }} --allow-secret-key-import --import ./.github/keys/mosipgpgkey_sec.gpg
 
       - name: Setup Maven settings
         run: |
@@ -71,6 +64,7 @@ jobs:
           FULL_PROJECT_KEY="${{ secrets.ORG_KEY }}_${FINAL_NAME}"
           cd "${{ inputs.SERVICE_LOCATION || '.' }}" && \
           mvn -U -B verify sonar:sonar \
+            -Dgpg.skip=true \
             -Dmaven.wagon.http.retryHandler.count=2 \
             -Dsonar.projectKey=${FULL_PROJECT_KEY} \
             -Dsonar.organization=${{ secrets.ORG_KEY }} \

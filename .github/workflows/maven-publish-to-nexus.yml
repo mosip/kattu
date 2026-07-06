@@ -6,7 +6,6 @@ on:
       SERVICE_LOCATION:
         required: true
         type: string
-    inputs:
       FORCE_BUILD:
         required: false
         type: string

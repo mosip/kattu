@@ -12,7 +12,6 @@ on:
         required: true
         default: "android"
         type: string
-    inputs:
       FORCE_BUILD:
         required: false
         type: string

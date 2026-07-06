@@ -9,6 +9,10 @@ on:
       BUILD_ARTIFACT:
         required: true
         type: string
+      FORCE_BUILD:
+        required: false
+        type: string
+        default: 'true'
     secrets:
       OSSRH_USER:
         required: true
@@ -17,6 +21,8 @@ on:
       OSSRH_TOKEN:
         required: true
       GPG_SECRET:
+        required: true
+      GPG_PRIVATE_KEY:
         required: true
       SLACK_WEBHOOK_URL:
         required: true
@@ -44,18 +50,41 @@ jobs:
 
     - name: Setup branch and env
       run: |
-        # Strip git ref prefix from version
         echo "BRANCH_NAME=$(echo ${{ github.ref }} | sed -e 's,.*/\(.*\),\1,')" >> $GITHUB_ENV
-        echo "GPG_TTY=$(tty)" >> $GITHUB_ENV  
 
-    - name: Setup branch and GPG public key
+    - name: Import GPG key
+      env:
+        GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        GPG_SECRET: ${{ secrets.GPG_SECRET }}
       run: |
-        # Strip git ref prefix from version
-        echo ${{ env.BRANCH_NAME }}
-        echo ${{ env.GPG_TTY }}
-        sudo apt-get --yes install gnupg2
-        gpg2 --import ./.github/keys/mosipgpgkey_pub.gpg 
-        gpg2 --quiet --batch --passphrase=${{secrets.GPG_SECRET}}  --allow-secret-key-import --import ./.github/keys/mosipgpgkey_sec.gpg 
+        if [ -n "$GPG_PRIVATE_KEY" ]; then
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --passphrase "$GPG_SECRET" --pinentry-mode loopback --import
+        else
+          echo "GPG_PRIVATE_KEY not set, skipping import"
+        fi
+
+    - name: Check GPG key age
+      env:
+        GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        FORCE_BUILD: ${{ inputs.FORCE_BUILD }}
+      run: |
+        if [ -z "$GPG_PRIVATE_KEY" ]; then exit 0; fi
+        CREATED=$(gpg --list-keys --with-colons 2>/dev/null | awk -F: '/^pub/{print $6; exit}')
+        if [ -z "$CREATED" ]; then exit 0; fi
+        NOW=$(date +%s)
+        AGE_DAYS=$(( (NOW - CREATED) / 86400 ))
+        AGE_YEARS=$(echo "scale=1; $AGE_DAYS / 365" | bc)
+        echo "GPG key age: $AGE_DAYS days (~$AGE_YEARS years)"
+        if [ $AGE_DAYS -gt 1095 ]; then
+          if [ "$FORCE_BUILD" = "true" ]; then
+            echo "::warning::GPG key is over 3 years old ($AGE_YEARS years). FORCE_BUILD=true — KEY ROTATION IS OVERDUE."
+          else
+            echo "::error::GPG key is over 3 years old ($AGE_YEARS years). Rotate the key or set FORCE_BUILD=true to override."
+            exit 1
+          fi
+        elif [ $AGE_DAYS -gt 730 ]; then
+          echo "::warning::GPG key is over 2 years old ($AGE_YEARS years). Schedule key rotation soon."
+        fi
 
     - name: Install xmlstartlet and xmllint
       run: |
@@ -154,6 +183,14 @@ jobs:
           echo "Pom file : $F"
           xmllint --xpath '/*[local-name()="project"]/*[local-name()="version"]' $F
         done
+
+    - name: Verify dependency signatures (simplify4u pgpverify)
+      continue-on-error: true
+      run: |
+        cd ${{ inputs.SERVICE_LOCATION }} && mvn org.simplify4u.plugins:pgpverify-maven-plugin:1.19.1:check \
+          -DfailNoSignature=false \
+          -DverifySnapshots=false \
+          -s $GITHUB_WORKSPACE/settings.xml
 
     - name: Build with Maven
       run: cd ${{ inputs.SERVICE_LOCATION }} && mvn -U -B package -Dmaven.wagon.http.retryHandler.count=2 --file pom.xml -s $GITHUB_WORKSPACE/settings.xml

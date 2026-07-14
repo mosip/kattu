@@ -114,10 +114,10 @@ jobs:
             -Dsonar.scanner.skipSystemTruststore=true \
             $COVERAGE_ARG
 
-      - uses: 8398a7/action-slack@v3
-        with:
-          status: ${{ job.status }}
-          fields: repo,message,author,commit,workflow,job
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-        if: ${{ github.event_name != 'pull_request' && failure() }}
+      #- uses: 8398a7/action-slack@v3
+      #  with:
+      #    status: ${{ job.status }}
+      #    fields: repo,message,author,commit,workflow,job
+      #  env:
+      #    SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      #  if: ${{ github.event_name != 'pull_request' && failure() }}

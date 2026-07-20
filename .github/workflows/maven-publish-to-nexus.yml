@@ -6,6 +6,10 @@ on:
       SERVICE_LOCATION:
         required: true
         type: string
+      FORCE_BUILD:
+        required: false
+        type: string
+        default: 'true'
     secrets:
       OSSRH_USER:
         required: true
@@ -16,6 +20,8 @@ on:
       OSSRH_TOKEN:
         required: true
       GPG_SECRET:
+        required: true
+      GPG_PRIVATE_KEY:
         required: true
       SLACK_WEBHOOK_URL:
         required: false
@@ -44,18 +50,41 @@ jobs:
 
     - name: Setup branch and env
       run: |
-        # Strip git ref prefix from version
         echo "BRANCH_NAME=$(echo ${{ github.ref }} | sed -e 's,.*/\(.*\),\1,')" >> $GITHUB_ENV
-        echo "GPG_TTY=$(tty)" >> $GITHUB_ENV
 
-    - name: Setup branch and GPG public key
+    - name: Import GPG key
+      env:
+        GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        GPG_SECRET: ${{ secrets.GPG_SECRET }}
       run: |
-        # Strip git ref prefix from version
-        echo ${{ env.BRANCH_NAME }}
-        echo ${{ env.GPG_TTY }}
-        sudo apt-get --yes install gnupg2
-        gpg2 --import ./.github/keys/mosipgpgkey_pub.gpg 
-        gpg2 --quiet --batch --passphrase=${{secrets.GPG_SECRET}}  --allow-secret-key-import --import ./.github/keys/mosipgpgkey_sec.gpg 
+        if [ -n "$GPG_PRIVATE_KEY" ]; then
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --passphrase "$GPG_SECRET" --pinentry-mode loopback --import
+        else
+          echo "GPG_PRIVATE_KEY not set, skipping import"
+        fi
+
+    - name: Check GPG key age
+      env:
+        GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        FORCE_BUILD: ${{ inputs.FORCE_BUILD }}
+      run: |
+        if [ -z "$GPG_PRIVATE_KEY" ]; then exit 0; fi
+        CREATED=$(gpg --list-keys --with-colons 2>/dev/null | awk -F: '/^pub/{print $6; exit}')
+        if [ -z "$CREATED" ]; then exit 0; fi
+        NOW=$(date +%s)
+        AGE_DAYS=$(( (NOW - CREATED) / 86400 ))
+        AGE_YEARS=$(echo "scale=1; $AGE_DAYS / 365" | bc)
+        echo "GPG key age: $AGE_DAYS days (~$AGE_YEARS years)"
+        if [ $AGE_DAYS -gt 1095 ]; then
+          if [ "$FORCE_BUILD" = "true" ]; then
+            echo "::warning::GPG key is over 3 years old ($AGE_YEARS years). FORCE_BUILD=true — KEY ROTATION IS OVERDUE."
+          else
+            echo "::error::GPG key is over 3 years old ($AGE_YEARS years). Rotate the key or set FORCE_BUILD=true to override."
+            exit 1
+          fi
+        elif [ $AGE_DAYS -gt 730 ]; then
+          echo "::warning::GPG key is over 2 years old ($AGE_YEARS years). Schedule key rotation soon."
+        fi
 
     - name: Setup the settings file for ossrh server
       run: echo "<settings> <servers> <server> <id>ossrh</id> <username>${{secrets.OSSRH_USER}}</username> <password>${{secrets.OSSRH_SECRET}}</password> </server> </servers> <profiles> <profile> <id>ossrh</id> <activation> <activeByDefault>true</activeByDefault> </activation> <properties> <gpg.executable>gpg2</gpg.executable> <gpg.passphrase>${{secrets.GPG_SECRET}}</gpg.passphrase> </properties> </profile> <profile> <id>allow-snapshots</id> <activation><activeByDefault>true</activeByDefault></activation> <repositories> <repository> <id>snapshots-repo</id> <url>https://central.sonatype.com/repository/maven-snapshots/</url> <releases><enabled>false</enabled></releases> <snapshots><enabled>true</enabled></snapshots> </repository> <repository> <id>releases-repo</id> <url>https://central.sonatype.com/api/v1/publisher</url> <releases><enabled>true</enabled></releases> <snapshots><enabled>false</enabled></snapshots> </repository> <repository> <id>danubetech-maven-public</id> <url>https://repo.danubetech.com/repository/maven-public/</url> </repository> </repositories> </profile> <profile> <id>sonar</id> <properties> <sonar.sources>.</sonar.sources> <sonar.host.url>https://sonarcloud.io</sonar.host.url> </properties> <activation> <activeByDefault>false</activeByDefault> </activation> </profile> </profiles> </settings>" > $GITHUB_WORKSPACE/settings.xml
@@ -66,8 +95,6 @@ jobs:
     - name: Publish the maven package
       run: |
         cd ${{ inputs.SERVICE_LOCATION }} && mvn -DskipTests -U -B deploy -Dmaven.wagon.http.retryHandler.count=2 -DaltDeploymentRepository=ossrh::default::${{ secrets.OSSRH_URL }} -s $GITHUB_WORKSPACE/settings.xml -f pom.xml
-      env:
-        GPG_TTY: $(tty)
 
     # - uses: 8398a7/action-slack@v3
     #   with:

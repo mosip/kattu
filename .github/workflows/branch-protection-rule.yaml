@@ -1,0 +1,431 @@
+name: Apply Branch Protection Rules
+
+on:
+  workflow_call:
+    inputs:
+      target_repo:
+        description: "Repo to protect, e.g. mosip/<mosip-repo>"
+        required: true
+        type: string
+
+      branch_pattern:
+        description: "Branch to protect, e.g. release-1.1.x"
+        required: true
+        type: string
+
+      use_custom_rules:
+        description: "true = custom rules file | false = default hardcoded rules"
+        required: false
+        type: boolean
+        default: false
+
+      config_repo:
+        description: "Repo containing config files e.g. your-org/release-script"
+        required: false
+        type: string
+        default: ""
+
+      config_repo_ref:
+        description: "Branch/ref of the config repo"
+        required: false
+        type: string
+        default: "main"
+
+    secrets:
+      ACTION_PAT:
+        required: true
+      ALLOWED_TEAM:
+        required: false
+
+jobs:
+  check-access:
+    name: "Verify @${{ github.actor }} has access"
+    runs-on: ubuntu-latest
+    outputs:
+      authorized: ${{ steps.verify.outputs.authorized }}
+
+    steps:
+      - name: "Check collaborator or team membership"
+        id: verify
+        env:
+          GH_TOKEN: ${{ secrets.ACTION_PAT }}
+          ACTOR: ${{ github.actor }}
+          REPO: ${{ inputs.target_repo }}
+          TEAM: ${{ secrets.ALLOWED_TEAM }}
+        run: |
+          ORG=$(echo "$REPO" | cut -d'/' -f1)
+          OWNER=$(echo "$REPO" | cut -d'/' -f1)
+          AUTHORIZED=false
+
+          echo "Actor  : $ACTOR"
+          echo "Repo   : $REPO"
+          echo "Branch : ${{ inputs.branch_pattern }}"
+
+          # Check 0: Is actor the repo owner?
+          # GitHub collaborator API returns 404 for repo owners — handle separately
+          if [ "$ACTOR" = "$OWNER" ]; then
+            echo "[OK] $ACTOR is the owner of $REPO — full access granted"
+            AUTHORIZED=true
+          fi
+
+          # Check 1: Is actor a collaborator with Admin or Maintain role?
+          # Triage, Read, Write and outside collaborators are NOT allowed.
+          if [ "$AUTHORIZED" = "false" ]; then
+            PERM_STATUS=$(curl -s -o /tmp/perm.json -w "%{http_code}" \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/$REPO/collaborators/$ACTOR/permission")
+
+            if [ "$PERM_STATUS" = "200" ]; then
+              PERMISSION=$(cat /tmp/perm.json | jq -r '.permission // "none"')
+              ROLE_NAME=$(cat /tmp/perm.json | jq -r '.role_name // "none"')
+              echo "  Permission : $PERMISSION"
+              echo "  Role name  : $ROLE_NAME"
+
+              # Allow only admin or maintain — block triage, read, write, outside collaborators
+              # role_name is the most accurate field — use it for the check
+              if [ "$ROLE_NAME" = "admin" ] || [ "$ROLE_NAME" = "maintain" ]; then
+                echo "[OK] $ACTOR has '$ROLE_NAME' role on $REPO — authorized to create branch protection rules"
+                AUTHORIZED=true
+              else
+                echo "[DENIED] $ACTOR has '$ROLE_NAME' role on $REPO"
+                echo "[DENIED] Only 'admin' and 'maintain' roles can create branch protection rules"
+                echo "[DENIED] '$ROLE_NAME' role does not have sufficient permission"
+              fi
+            else
+              echo "[INFO] $ACTOR is NOT a collaborator on $REPO"
+            fi
+          fi
+
+          # Check 2: Is actor a member of any team with Admin or Maintain role on this repo?
+          # This checks ALL teams on the repo, not just ALLOWED_TEAM.
+          if [ "$AUTHORIZED" = "false" ]; then
+            echo ">> Checking team roles on $REPO ..."
+
+            # Fetch all teams with access to this repo
+            TEAMS_RESP=$(curl -s -w "%{http_code}" -o /tmp/repo_teams.json \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/$REPO/teams?per_page=100")
+
+            if [ "$TEAMS_RESP" = "200" ]; then
+              # Get team slugs that have admin or maintain permission on this repo
+              ALLOWED_TEAM_SLUGS=$(cat /tmp/repo_teams.json | \
+                jq -r '.[] | select(.permission == "admin" or .permission == "maintain") | .slug')
+
+              for TEAM_SLUG in $ALLOWED_TEAM_SLUGS; do
+                # Check if actor is an active member of this team
+                MEMBER_STATUS=$(curl -s -o /tmp/member.json -w "%{http_code}" \
+                  -H "Authorization: Bearer $GH_TOKEN" \
+                  -H "Accept: application/vnd.github+json" \
+                  -H "X-GitHub-Api-Version: 2022-11-28" \
+                  "https://api.github.com/orgs/$ORG/teams/$TEAM_SLUG/memberships/$ACTOR")
+
+                if [ "$MEMBER_STATUS" = "200" ]; then
+                  STATE=$(cat /tmp/member.json | jq -r '.state // "none"')
+                  if [ "$STATE" = "active" ]; then
+                    echo "[OK] $ACTOR is an active member of team '$TEAM_SLUG' (Admin/Maintain) — authorized"
+                    AUTHORIZED=true
+                    break
+                  fi
+                fi
+              done
+
+              if [ "$AUTHORIZED" = "false" ]; then
+                echo "[INFO] $ACTOR is not a member of any Admin or Maintain team on $REPO"
+              fi
+            else
+              echo "[INFO] Could not fetch teams for $REPO (HTTP $TEAMS_RESP)"
+            fi
+          fi
+
+          echo "Authorization result : $AUTHORIZED"
+          echo "authorized=$AUTHORIZED" >> $GITHUB_OUTPUT
+
+          if [ "$AUTHORIZED" = "false" ]; then
+            echo "::error::Access denied -- @$ACTOR is not a collaborator or team member."
+            exit 1
+          fi
+
+  apply-protection:
+    name: "Protect ${{ inputs.target_repo }} @ ${{ inputs.branch_pattern }}"
+    runs-on: ubuntu-latest
+    needs: check-access
+    if: needs.check-access.outputs.authorized == 'true'
+
+    steps:
+      - name: Checkout config repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.config_repo }}
+          ref: ${{ inputs.config_repo_ref }}
+          token: ${{ secrets.ACTION_PAT }}
+
+      - name: "Load branch protection rules"
+        id: load-rules
+        run: |
+          if [ "${{ inputs.use_custom_rules }}" = "true" ]; then
+            CONFIG="release/branching-rule/custom-branch-protection-rule.yaml"
+            echo "[FILE] Loading rules from $CONFIG ..."
+            if [ ! -f "$CONFIG" ]; then
+              echo "::error::Custom rules file not found at $CONFIG"
+              exit 1
+            fi
+            echo "aW1wb3J0IG9zCgpydWxlcyA9IHt9CmNvbmZpZ19maWxlID0gInJlbGVhc2UvYnJhbmNoaW5nLXJ1bGUvY3VzdG9tLWJyYW5jaC1wcm90ZWN0aW9uLXJ1bGUueWFtbCIKCndpdGggb3Blbihjb25maWdfZmlsZSkgYXMgZjoKICAgIGluX3J1bGVzID0gRmFsc2UKICAgIGZvciBsaW5lIGluIGY6CiAgICAgICAgIyBSZW1vdmUgaW5saW5lIGNvbW1lbnRzIGJlZm9yZSBwcm9jZXNzaW5nCiAgICAgICAgc3RyaXBwZWQgPSBsaW5lLnN0cmlwKCkKICAgICAgICBpZiAiIyIgaW4gc3RyaXBwZWQ6CiAgICAgICAgICAgIHN0cmlwcGVkID0gc3RyaXBwZWRbOnN0cmlwcGVkLmluZGV4KCIjIildLnN0cmlwKCkKICAgICAgICBpZiBub3Qgc3RyaXBwZWQ6CiAgICAgICAgICAgIGNvbnRpbnVlCiAgICAgICAgaWYgc3RyaXBwZWQgPT0gInJ1bGVzOiI6CiAgICAgICAgICAgIGluX3J1bGVzID0gVHJ1ZQogICAgICAgICAgICBjb250aW51ZQogICAgICAgIGlmIGluX3J1bGVzIGFuZCBzdHJpcHBlZDoKICAgICAgICAgICAgaWYgIjoiIGluIHN0cmlwcGVkOgogICAgICAgICAgICAgICAga2V5LCBfLCB2YWwgPSBzdHJpcHBlZC5wYXJ0aXRpb24oIjoiKQogICAgICAgICAgICAgICAgcnVsZXNba2V5LnN0cmlwKCldID0gdmFsLnN0cmlwKCkuc3RyaXAoJyInKS5zdHJpcCgiJyIpCgpkZWYgb3V0KGtleSwgdmFsdWUpOgogICAgd2l0aCBvcGVuKG9zLmVudmlyb25bIkdJVEhVQl9PVVRQVVQiXSwgImEiKSBhcyBmOgogICAgICAgIGYud3JpdGUoa2V5ICsgIj0iICsgc3RyKHZhbHVlKSArICJcbiIpCgpvdXQoImFwcHJvdmFscyIsICAgIHJ1bGVzLmdldCgicmVxdWlyZWRfYXBwcm92aW5nX3Jldmlld19jb3VudCIsICIxIikpCm91dCgiZGlzbWlzcyIsICAgICAgcnVsZXMuZ2V0KCJkaXNtaXNzX3N0YWxlX3Jldmlld3MiLCAiZmFsc2UiKS5sb3dlcigpKQpvdXQoImNvZGVvd25lciIsICAgIHJ1bGVzLmdldCgicmVxdWlyZV9jb2RlX293bmVyX3Jldmlld3MiLCAiZmFsc2UiKS5sb3dlcigpKQpvdXQoImxhc3RfcHVzaCIsICAgIHJ1bGVzLmdldCgicmVxdWlyZV9sYXN0X3B1c2hfYXBwcm92YWwiLCAiZmFsc2UiKS5sb3dlcigpKQpvdXQoInJlcV9zdGF0dXMiLCAgIHJ1bGVzLmdldCgicmVxdWlyZV9zdGF0dXNfY2hlY2tzIiwgImZhbHNlIikubG93ZXIoKSkKb3V0KCJzdHJpY3QiLCAgICAgICBydWxlcy5nZXQoInN0cmljdF9zdGF0dXNfY2hlY2tzIiwgImZhbHNlIikubG93ZXIoKSkKb3V0KCJjb250ZXh0cyIsICAgICBydWxlcy5nZXQoInN0YXR1c19jaGVja19jb250ZXh0cyIsICIiKSkKb3V0KCJjb252ZXJzYXRpb24iLCBydWxlcy5nZXQoInJlcXVpcmVkX2NvbnZlcnNhdGlvbl9yZXNvbHV0aW9uIiwgInRydWUiKS5sb3dlcigpKQpvdXQoImxpbmVhciIsICAgICAgIHJ1bGVzLmdldCgicmVxdWlyZWRfbGluZWFyX2hpc3RvcnkiLCAiZmFsc2UiKS5sb3dlcigpKQpvdXQoImVuZm9yY2UiLCAgICAgIHJ1bGVzLmdldCgiZW5mb3JjZV9hZG1pbnMiLCAidHJ1ZSIpLmxvd2VyKCkpCm91dCgiZm9yY2VfcHVzaCIsICAgcnVsZXMuZ2V0KCJhbGxvd19mb3JjZV9wdXNoZXMiLCAiZmFsc2UiKS5sb3dlcigpKQpvdXQoImRlbGV0aW9ucyIsICAgIHJ1bGVzLmdldCgiYWxsb3dfZGVsZXRpb25zIiwgImZhbHNlIikubG93ZXIoKSkKb3V0KCJwdXNoX3VzZXJzIiwgICBydWxlcy5nZXQoInB1c2hfdXNlcnMiLCAiZ3Nhc2lrdW1hcix2aXNod2EtdnlvbSxja20wMDciKSkKb3V0KCJwdXNoX3RlYW1zIiwgICBydWxlcy5nZXQoInB1c2hfdGVhbXMiLCAiIikpCnByaW50KCJbT0tdIEN1c3RvbSBydWxlcyBsb2FkZWQgZnJvbSBmaWxlLiIpCg==" | base64 -d > /tmp/load_rules.py
+            python3 /tmp/load_rules.py
+          else
+            echo "[INFO] Using default hardcoded rules ..."
+            echo "approvals=1"                              >> $GITHUB_OUTPUT
+            echo "dismiss=false"                            >> $GITHUB_OUTPUT
+            echo "codeowner=false"                          >> $GITHUB_OUTPUT
+            echo "last_push=false"                          >> $GITHUB_OUTPUT
+            echo "req_status=false"                         >> $GITHUB_OUTPUT
+            echo "strict=false"                             >> $GITHUB_OUTPUT
+            echo "contexts="                                >> $GITHUB_OUTPUT
+            echo "conversation=true"                        >> $GITHUB_OUTPUT
+            echo "linear=false"                             >> $GITHUB_OUTPUT
+            echo "enforce=true"                             >> $GITHUB_OUTPUT
+            echo "force_push=false"                         >> $GITHUB_OUTPUT
+            echo "deletions=false"                          >> $GITHUB_OUTPUT
+            echo "push_users=gsasikumar,vishwa-vyom,ckm007" >> $GITHUB_OUTPUT
+            echo "push_teams="                              >> $GITHUB_OUTPUT
+            echo "[OK] Default rules loaded."
+          fi
+
+      - name: "Check existing branch protection"
+        id: check-existing
+        env:
+          GH_TOKEN:       ${{ secrets.ACTION_PAT }}
+          TARGET_REPO:    ${{ inputs.target_repo }}
+          BRANCH_PATTERN: ${{ inputs.branch_pattern }}
+        run: |
+          BRANCH_ENCODED=$(python3 -c \
+            "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1], safe=''))" \
+            "$BRANCH_PATTERN")
+
+          HTTP_STATUS=$(curl -s -o /tmp/existing.json -w "%{http_code}" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$TARGET_REPO/branches/${BRANCH_ENCODED}/protection")
+
+          echo "Existing protection API status: $HTTP_STATUS"
+
+          if [ "$HTTP_STATUS" = "404" ]; then
+            echo "[INFO] No protection rule found on '$BRANCH_PATTERN' -- will create one."
+            echo "already_protected=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "::error::Unexpected API response: $HTTP_STATUS"
+            exit 1
+          fi
+
+          # Branch protection already exists -- fail with clear message
+          echo "---"
+          echo "[FAIL] Branch '$BRANCH_PATTERN' on '$TARGET_REPO'"
+          echo "       already has branch protection rules."
+          echo "       Please remove the existing rules first if you want to reapply."
+          echo "---"
+
+          cat >> $GITHUB_STEP_SUMMARY <<SUMMARY
+          ## Branch Protection Already Exists -- Action Failed
+
+          | | |
+          |---|---|
+          | **Repo** | \`$TARGET_REPO\` |
+          | **Branch** | \`$BRANCH_PATTERN\` |
+          | **Status** | Branch protection already exists -- remove it first before reapplying |
+          | **Triggered by** | \`@${{ github.actor }}\` |
+          SUMMARY
+
+          echo "::error::Branch '$BRANCH_PATTERN' on '$TARGET_REPO' already has branch protection rules. Remove existing rules first."
+          exit 1
+
+      - name: "Validate push-restriction users"
+        id: validate-users
+        if: steps.check-existing.outputs.already_protected == 'false'
+        env:
+          GH_TOKEN:   ${{ secrets.ACTION_PAT }}
+          REPO:       ${{ inputs.target_repo }}
+          PUSH_USERS: ${{ steps.load-rules.outputs.push_users }}
+          PUSH_TEAMS: ${{ steps.load-rules.outputs.push_teams }}
+        run: |
+          VALID_USERS=()
+          VALID_TEAMS=()
+
+          IFS=',' read -ra USERS <<< "$PUSH_USERS"
+          for USER in "${USERS[@]}"; do
+            USER=$(echo "$USER" | xargs)
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/$REPO/collaborators/$USER")
+            if [ "$STATUS" = "204" ]; then
+              echo "[OK] $USER is a collaborator"
+              VALID_USERS+=("\"$USER\"")
+            else
+              echo "::warning::$USER is not a collaborator on $REPO -- excluded."
+            fi
+          done
+
+          if [ -n "$PUSH_TEAMS" ]; then
+            IFS=',' read -ra TEAMS <<< "$PUSH_TEAMS"
+            for TEAM in "${TEAMS[@]}"; do
+              TEAM=$(echo "$TEAM" | xargs)
+              VALID_TEAMS+=("\"$TEAM\"")
+            done
+          fi
+
+          USERS_JSON=$(IFS=,; echo "[${VALID_USERS[*]}]")
+          TEAMS_JSON=$(IFS=,; echo "[${VALID_TEAMS[*]}]")
+          echo "users_json=$USERS_JSON" >> $GITHUB_OUTPUT
+          echo "teams_json=$TEAMS_JSON" >> $GITHUB_OUTPUT
+
+      - name: "Auto-discover status checks"
+        id: build-status
+        if: steps.check-existing.outputs.already_protected == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.ACTION_PAT }}
+          REPO: ${{ inputs.target_repo }}
+        run: |
+          mkdir -p /tmp/wf_files
+
+          curl -s \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$REPO/contents/.github/workflows" \
+            | jq -r '.[] | select(.name | test("\\.(yml|yaml)$")) | [.name, .download_url] | @tsv' \
+            > /tmp/wf_list.tsv 2>/dev/null || true
+
+          if [ ! -s /tmp/wf_list.tsv ]; then
+            echo "[INFO] No workflow files found -- proceeding without status checks."
+            echo "status_json={\"strict\": false, \"contexts\": []}" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          while IFS=$'\t' read -r fname url; do
+            curl -s "$url" -o "/tmp/wf_files/$fname"
+          done < /tmp/wf_list.tsv
+
+          echo "aW1wb3J0IG9zLCBqc29uLCByZQoKY2hlY2tzID0gW10Kd2ZfZGlyID0gIi90bXAvd2ZfZmlsZXMiCgpmb3IgZm5hbWUgaW4gc29ydGVkKG9zLmxpc3RkaXIod2ZfZGlyKSk6CiAgICBmcGF0aCA9IG9zLnBhdGguam9pbih3Zl9kaXIsIGZuYW1lKQogICAgdHJ5OgogICAgICAgIHdpdGggb3BlbihmcGF0aCkgYXMgZjoKICAgICAgICAgICAgcmF3ID0gZi5yZWFkKCkKICAgIGV4Y2VwdCBFeGNlcHRpb246CiAgICAgICAgY29udGludWUKICAgIGpvYl9ibG9ja3MgPSByZS5zcGxpdChyJ1xuKD89ICBcd1tcdy1dKjopJywgcmF3KQogICAgZm9yIGJsb2NrIGluIGpvYl9ibG9ja3M6CiAgICAgICAgYmxpbmVzID0gYmxvY2suc3RyaXAoKS5zcGxpdGxpbmVzKCkKICAgICAgICBpZiBub3QgYmxpbmVzOgogICAgICAgICAgICBjb250aW51ZQogICAgICAgIGpvYl9pZCA9IGJsaW5lc1swXS5zdHJpcCgpLnJzdHJpcCgnOicpCiAgICAgICAgdXNlc19saW5lID0gbmV4dCgobCBmb3IgbCBpbiBibGluZXMgaWYgJ3VzZXM6JyBpbiBsKSwgJycpCiAgICAgICAgaXNfbWF2ZW4gID0gJ21hdmVuLWJ1aWxkLnltbCcgIGluIHVzZXNfbGluZQogICAgICAgIGlzX2RvY2tlciA9ICdkb2NrZXItYnVpbGQueW1sJyBpbiB1c2VzX2xpbmUKICAgICAgICBpZiBub3QgaXNfbWF2ZW4gYW5kIG5vdCBpc19kb2NrZXI6CiAgICAgICAgICAgIGNvbnRpbnVlCiAgICAgICAgc3VmZml4ID0gJ21hdmVuLWJ1aWxkJyBpZiBpc19tYXZlbiBlbHNlICdidWlsZC1kb2NrZXJzJwogICAgICAgIHN2Y19uYW1lcyA9IHJlLmZpbmRhbGwociJTRVJWSUNFX05BTUU6XHMqWydcIl0/KFtcdy4tXSspWydcIl0/IiwgYmxvY2spCiAgICAgICAgaWYgc3ZjX25hbWVzOgogICAgICAgICAgICBmb3Igc3ZjIGluIHN2Y19uYW1lczoKICAgICAgICAgICAgICAgIGNoZWNrID0gc3ZjICsgJyAvICcgKyBzdWZmaXgKICAgICAgICAgICAgICAgIGlmIGNoZWNrIG5vdCBpbiBjaGVja3M6CiAgICAgICAgICAgICAgICAgICAgY2hlY2tzLmFwcGVuZChjaGVjaykKICAgICAgICAgICAgICAgICAgICBwcmludCgnW09LXSBGb3VuZDogJyArIGNoZWNrKQogICAgICAgIGVsc2U6CiAgICAgICAgICAgIGNoZWNrID0gam9iX2lkICsgJyAvICcgKyBzdWZmaXgKICAgICAgICAgICAgaWYgY2hlY2sgbm90IGluIGNoZWNrczoKICAgICAgICAgICAgICAgIGNoZWNrcy5hcHBlbmQoY2hlY2spCiAgICAgICAgICAgICAgICBwcmludCgnW09LXSBGb3VuZDogJyArIGNoZWNrKQoKaWYgbm90IGNoZWNrczoKICAgIHByaW50KCdbSU5GT10gTm8gbWF2ZW4tYnVpbGQgb3IgZG9ja2VyLWJ1aWxkIGpvYnMgZm91bmQgLS0gcHJvY2VlZGluZyB3aXRob3V0IHN0YXR1cyBjaGVja3MuJykKICAgIHN0YXR1cyA9IHsic3RyaWN0IjogRmFsc2UsICJjb250ZXh0cyI6IFtdfQplbHNlOgogICAgcHJpbnQoJ1tPS10gJyArIHN0cihsZW4oY2hlY2tzKSkgKyAnIHN0YXR1cyBjaGVjayhzKSB3aWxsIGJlIHJlcXVpcmVkIG9uIFBScycpCiAgICBzdGF0dXMgPSB7InN0cmljdCI6IFRydWUsICJjb250ZXh0cyI6IGNoZWNrc30KCndpdGggb3BlbigiL3RtcC9zdGF0dXNfb3V0cHV0Lmpzb24iLCAidyIpIGFzIGY6CiAgICBqc29uLmR1bXAoc3RhdHVzLCBmKQo=" | base64 -d > /tmp/parse_workflows.py
+          python3 /tmp/parse_workflows.py
+
+          STATUS_JSON=$(cat /tmp/status_output.json)
+          echo "status_json=$STATUS_JSON" >> $GITHUB_OUTPUT
+
+      - name: "Apply branch protection"
+        if: steps.check-existing.outputs.already_protected == 'false'
+        env:
+          GH_TOKEN:       ${{ secrets.ACTION_PAT }}
+          USERS_JSON:     ${{ steps.validate-users.outputs.users_json }}
+          TEAMS_JSON:     ${{ steps.validate-users.outputs.teams_json }}
+          STATUS_JSON:    ${{ steps.build-status.outputs.status_json }}
+          TARGET_REPO:    ${{ inputs.target_repo }}
+          BRANCH_PATTERN: ${{ inputs.branch_pattern }}
+        run: |
+          BRANCH_ENCODED=$(python3 -c \
+            "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1], safe=''))" \
+            "$BRANCH_PATTERN")
+
+          # Check if repo owner is an org — restrictions only work for org repos
+          OWNER=$(echo "$TARGET_REPO" | cut -d'/' -f1)
+          ORG_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/orgs/$OWNER")
+
+          if [ "$ORG_STATUS" = "200" ]; then
+            echo "[INFO] $OWNER is an organization -- applying push restrictions"
+            RESTRICTIONS=$(jq -n \
+              --argjson users "$USERS_JSON" \
+              --argjson teams "$TEAMS_JSON" \
+              '{"users": $users, "teams": $teams, "apps": []}')
+          else
+            echo "[INFO] $OWNER is a personal account -- skipping push restrictions (not supported)"
+            RESTRICTIONS="null"
+          fi
+
+          # Build payload using environment variables to avoid line continuation issues
+          export JQ_USERS="$USERS_JSON"
+          export JQ_TEAMS="$TEAMS_JSON"
+          export JQ_STATUS="$STATUS_JSON"
+          export JQ_RESTR="$RESTRICTIONS"
+          export JQ_APPROVALS="${{ steps.load-rules.outputs.approvals }}"
+          export JQ_DISMISS="${{ steps.load-rules.outputs.dismiss }}"
+          export JQ_CODEOWNER="${{ steps.load-rules.outputs.codeowner }}"
+          export JQ_LAST_PUSH="${{ steps.load-rules.outputs.last_push }}"
+          export JQ_ENFORCE="${{ steps.load-rules.outputs.enforce }}"
+          export JQ_CONV_RES="${{ steps.load-rules.outputs.conversation }}"
+          export JQ_FORCE_PUSH="${{ steps.load-rules.outputs.force_push }}"
+          export JQ_DELETIONS="${{ steps.load-rules.outputs.deletions }}"
+          export JQ_LINEAR="${{ steps.load-rules.outputs.linear }}"
+
+          PAYLOAD=$(jq -n             --argjson users      "$JQ_USERS"             --argjson teams      "$JQ_TEAMS"             --argjson status     "$JQ_STATUS"             --argjson restr      "$JQ_RESTR"             --argjson approvals  "$JQ_APPROVALS"             --argjson dismiss    "$JQ_DISMISS"             --argjson codeowner  "$JQ_CODEOWNER"             --argjson last_push  "$JQ_LAST_PUSH"             --argjson enforce    "$JQ_ENFORCE"             --argjson conv_res   "$JQ_CONV_RES"             --argjson force_push "$JQ_FORCE_PUSH"             --argjson deletions  "$JQ_DELETIONS"             --argjson linear     "$JQ_LINEAR"             '{
+              "required_pull_request_reviews": {
+                "required_approving_review_count": $approvals,
+                "dismiss_stale_reviews": $dismiss,
+                "require_code_owner_reviews": $codeowner,
+                "require_last_push_approval": $last_push
+              },
+              "required_status_checks": $status,
+              "required_conversation_resolution": $conv_res,
+              "enforce_admins": $enforce,
+              "restrictions": $restr,
+              "allow_force_pushes": $force_push,
+              "allow_deletions": $deletions,
+              "required_linear_history": $linear,
+              "block_creations": false
+            }')
+
+          echo "Payload:"
+          echo "$PAYLOAD" | jq .
+
+          HTTP_STATUS=$(curl -s -o /tmp/api_response.json -w "%{http_code}" \
+            -X PUT \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$TARGET_REPO/branches/${BRANCH_ENCODED}/protection" \
+            -d "$PAYLOAD")
+
+          echo "HTTP Status : $HTTP_STATUS"
+          cat /tmp/api_response.json | jq .
+
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "::error::GitHub API returned HTTP $HTTP_STATUS"
+            exit 1
+          fi
+
+          echo "[OK] Branch protection applied successfully."
+
+      - name: "Job summary"
+        if: steps.check-existing.outputs.already_protected == 'false' && success()
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY <<SUMMARY
+          ## Branch Protection Applied
+          | | |
+          |---|---|
+          | **Repo** | \`${{ inputs.target_repo }}\` |
+          | **Branch** | \`${{ inputs.branch_pattern }}\` |
+          | **Rules** | ${{ inputs.use_custom_rules == true && 'Custom' || 'Default' }} |
+          | **Triggered by** | \`@${{ github.actor }}\` |
+
+          | Rule | Value |
+          |---|---|
+          | Required approvals | ${{ steps.load-rules.outputs.approvals }} |
+          | Dismiss stale reviews | ${{ steps.load-rules.outputs.dismiss }} |
+          | Require CODEOWNER | ${{ steps.load-rules.outputs.codeowner }} |
+          | Require status checks | ${{ steps.build-status.outputs.status_json != '{"strict": false, "contexts": []}' && 'true (auto-discovered)' || 'false' }} |
+          | Require conversation resolution | ${{ steps.load-rules.outputs.conversation }} |
+          | Do not allow bypassing | ${{ steps.load-rules.outputs.enforce }} |
+          | Push users | ${{ steps.load-rules.outputs.push_users }} |
+          | Force pushes | ${{ steps.load-rules.outputs.force_push }} |
+          | Branch deletion | ${{ steps.load-rules.outputs.deletions }} |
+          SUMMARY

@@ -61,6 +61,11 @@ jobs:
     - uses: actions/setup-node@v3
       with:
         node-version: ${{ inputs.NODE_VERSION }}
+    - name: Set up JDK 21
+      uses: actions/setup-java@v3
+      with:
+        distribution: 'temurin'
+        java-version: '21'
     - name: Cache npm dependencies
       uses: actions/cache@v4
       with:
@@ -126,7 +131,7 @@ jobs:
     - name: run sonar analysis
       run: |
         cd "./${{inputs.SERVICE_LOCATION}}"     
-        npm install sonar-scanner && npm run sonar -- -Dsonar.login=${{ env.SONAR_TOKEN }} -Dsonar.organization=${{ env.ORG_KEY }} ${{ inputs.SONAR_ARGS }}
+        npm install sonar-scanner && npm run sonar -- -Dsonar.token=${{ env.SONAR_TOKEN }} -Dsonar.organization=${{ env.ORG_KEY }} ${{ inputs.SONAR_ARGS }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

@@ -4,16 +4,13 @@ on:
   workflow_call:
     inputs:
       SERVICE_LOCATION:
-        required: true
+        required: false
         type: string
+        default: '.'
       SONAR_URL:
         required: false
         type: string
         default: 'https://sonarcloud.io'
-      PROJECT_KEY:
-        required: false
-        type: string
-        default: "mosip_${{ github.event.repository.name }}"
     secrets:
       SONAR_TOKEN:
         required: true
@@ -64,7 +61,10 @@ jobs:
 
       - name: Analyze with SonarCloud
         run: |
-          cd ${{ inputs.SERVICE_LOCATION }} &&  mvn -Psonar -U -B verify sonar:sonar -Dgpg.skip=true -Dmaven.wagon.http.retryHandler.count=2 -Dsonar.projectKey=${{ inputs.PROJECT_KEY }} -Dsonar.organization=${{ secrets.ORG_KEY }} -Dsonar.host.url=${{ inputs.SONAR_URL }} -Dsonar.token=${{ secrets.SONAR_TOKEN }} -Dsonar.projectName=${{ github.event.repository.name }} --file pom.xml -s $GITHUB_WORKSPACE/settings.xml
+          SERVICE_KEY=$(echo "${{ inputs.SERVICE_LOCATION }}" | sed 's|^\./||; s|^\.$||; s|[^a-zA-Z0-9]|-|g; s|-\\+|-|g; s|^-||; s|-$||')
+          FINAL_NAME="${{ github.event.repository.name }}${SERVICE_KEY:+-$SERVICE_KEY}"
+          FULL_PROJECT_KEY="${{ secrets.ORG_KEY }}_${FINAL_NAME}"
+          cd ${{ inputs.SERVICE_LOCATION }} &&  mvn -Psonar -U -B verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar -Dgpg.skip=true -Dmaven.wagon.http.retryHandler.count=2 -Dsonar.projectKey=${FULL_PROJECT_KEY} -Dsonar.organization=${{ secrets.ORG_KEY }} -Dsonar.host.url=${{ inputs.SONAR_URL }} -Dsonar.token=${{ secrets.SONAR_TOKEN }} -Dsonar.projectName=${FINAL_NAME} --file pom.xml -s $GITHUB_WORKSPACE/settings.xml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

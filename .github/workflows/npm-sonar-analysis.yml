@@ -13,10 +13,6 @@ on:
         required: false
         type: string
         default: 'https://sonarcloud.io'
-      PROJECT_KEY:
-        required: false
-        type: string
-        default: "mosip_${{ github.event.repository.name }}"
       NPM_BUILD_TYPE:
         required: false
         type: string
@@ -113,12 +109,17 @@ jobs:
           echo "\$SONAR_URL environmental variable not set; EXITING;";
           exit 1;
         fi
-  
+
+        SERVICE_KEY=$(echo "${{ inputs.SERVICE_LOCATION }}" | sed 's|^\./||; s|^\.$||; s|[^a-zA-Z0-9]|-|g; s|-\\+|-|g; s|^-||; s|-$||')
+        FINAL_NAME="${{ github.event.repository.name }}${SERVICE_KEY:+-$SERVICE_KEY}"
+        FULL_PROJECT_KEY="${ORG_KEY}_${FINAL_NAME}"
+
         cd "./${{inputs.SERVICE_LOCATION}}"
-        
+
         echo "
           sonar.host.url=${{ inputs.SONAR_URL }}
-          sonar.projectKey=${{ inputs.PROJECT_KEY }}
+          sonar.projectKey=${FULL_PROJECT_KEY}
+          sonar.projectName=${FINAL_NAME}
           sonar.sourceEncoding=UTF-8
           sonar.sources=${{ inputs.SONAR_SOURCES }}
           sonar.exclusions=${{ inputs.SONAR_EXCLUSIONS }}

@@ -34,6 +34,7 @@ on:
 jobs:
   helm-release-preparation:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
         with:
@@ -58,37 +59,47 @@ jobs:
             echo "Updated version in $install_file to $INSTALL_CHART_VERSION"
           done   
 
-      - name: Replace Docker reposotory and tag in values.yaml
+      - name: Replace Docker repository and tag in values.yaml
         run: |
-          new_tag="${{ github.event.inputs.IMAGE_TAG }}"
+          new_tag="${{ inputs.IMAGE_TAG }}"
           export new_tag
           
           values_files=$(find . -name "values.yaml")
+
           for file in $values_files; do
             echo "Processing $file"
-            
+
+            # Default repository prefix
+            repo_prefix="mosipid"
+
+            # Detect if it is INJI stack
+            if grep -qE "injistackdev|injistackqa" "$file"; then
+              repo_prefix="injistack"
+            fi
+
+            echo "Using repository prefix: $repo_prefix"
+
             if yq eval '.image' "$file" | grep -qv 'null'; then
-              yq eval '.image.repository |= sub("^[^/]+", "mosipid")' -i "$file"
+              yq eval ".image.repository |= sub(\"^[^/]+\", \"$repo_prefix\")" -i "$file"
               yq eval '.image.tag |= env(new_tag)' -i "$file"
-             fi
+            fi
 
             if yq eval '.job' "$file" | grep -qv 'null'; then
-              yq eval '.job.image.repository |= sub("^[^/]+", "mosipid")' -i "$file"
+              yq eval ".job.image.repository |= sub(\"^[^/]+\", \"$repo_prefix\")" -i "$file"
               yq eval '.job.image.tag |= env(new_tag)' -i "$file"
-             fi
-      
+            fi
+          
             echo "Updated $file"
           done
-          
+
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v6.1.0
         with:
           commit-message: Updated chart versions, image and tag for release changes
-          title: ${{ github.event.inputs.COMMIT_MESSAGE }}
+          title: ${{ inputs.COMMIT_MESSAGE }}
           body: Automated PR for release.
           branch: releas-branch
           delete-branch: true
-          base: ${{ github.event.inputs.BASE }}
+          base: ${{ inputs.BASE }}
           token: ${{ secrets.ACTION_PAT }}
           signoff: true
-          

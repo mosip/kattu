@@ -11,7 +11,12 @@ on:
         type: string
       MAVEN_NON_EXEC_ARTIFACTS:
         required: false
-        type: string 
+        type: string
+      LICENSE_NAME:
+        description: "License Name"
+        required: false
+        default: "MPL 2.0"
+        type: string
     secrets:
       OSSRH_USER:
         required: true
@@ -70,7 +75,9 @@ jobs:
       run: echo "<settings><servers><server><id>ossrh</id><username>${{secrets.OSSRH_USER}}</username><password>${{secrets.OSSRH_SECRET}}</password></server></servers><profiles><profile><id>ossrh</id><activation><activeByDefault>true</activeByDefault></activation><properties><gpg.executable>gpg2</gpg.executable><gpg.passphrase>${{secrets.GPG_SECRET}}</gpg.passphrase></properties></profile><profile><id>allow-snapshots</id><activation><activeByDefault>true</activeByDefault></activation><repositories><repository><id>snapshots-repo</id><url>https://central.sonatype.com/repository/maven-snapshots</url><releases><enabled>false</enabled></releases><snapshots><enabled>true</enabled></snapshots></repository><repository><id>releases-repo</id><url>https://central.sonatype.com/api/v1/publisher</url><releases><enabled>true</enabled></releases><snapshots><enabled>false</enabled></snapshots></repository><repository><id>danubetech-maven-public</id><url>https://repo.danubetech.com/repository/maven-public/</url></repository><repository><id>nexus-snapshots</id><url>https://oss.sonatype.org/content/repositories/snapshots</url></repository></repositories></profile><profile><id>sonar</id><properties><sonar.sources>.</sonar.sources><sonar.host.url>https://sonarcloud.io</sonar.host.url></properties><activation><activeByDefault>false</activeByDefault></activation></profile></profiles></settings>" > $GITHUB_WORKSPACE/settings.xml
 
     - name: Build check for MOSIP License
-      run: cd ${{ inputs.SERVICE_LOCATION }} && xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:licenses[1]/s:license/s:name" -nl pom.xml | grep -q "MPL 2.0"
+      run: |
+        cd ${{ inputs.SERVICE_LOCATION }}
+        xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:licenses[1]/s:license/s:name" -nl pom.xml | grep -q "${{ inputs.LICENSE_NAME }}"
 
     - name: Build check for developer
       run: cd ${{ inputs.SERVICE_LOCATION }} && xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:developers[1]/s:developer/s:name" -nl pom.xml | grep -icq "Mosip"
@@ -104,25 +111,52 @@ jobs:
     - name: Build with Maven
       run: cd ${{ inputs.SERVICE_LOCATION }} && mvn -U -B package -Dmaven.wagon.http.retryHandler.count=2 --file pom.xml -s $GITHUB_WORKSPACE/settings.xml
 
+    - name: Debug - List all JARs and permissions
+      if: ${{ !contains(github.ref, 'master') && !contains(github.ref, 'main') }}
+      run: |
+        echo "=== All JAR files in target directories with permissions ==="
+        find ${{ inputs.SERVICE_LOCATION }} -path '*/target/*' -name '*.jar' -type f -ls || echo "No JAR files found"
+        echo ""
+        echo "=== JAR files with executable bit set ==="
+        find ${{ inputs.SERVICE_LOCATION }} -path '*/target/*' -name '*.jar' -type f -executable -ls || echo "No executable JARs found"
+
     - name: Ready the springboot executable artifacts
       if: ${{ !contains(github.ref, 'master') || !contains(github.ref, 'main') }}
       run: |
         ## FIND JARS & COPY ONLY EXECUTABLE JARs STORED UNDER TARGET DIRECTORY 
-        find ${{ inputs.SERVICE_LOCATION }} -path '*/target/*' -name '*.jar'  -type f  -executable -exec zip ${{ inputs.BUILD_ARTIFACT }}.zip {} +
+        find ${{ inputs.SERVICE_LOCATION }} -path '*/target/*' -name '*.jar'  -type f  -executable -exec zip ${{ inputs.BUILD_ARTIFACT }}.zip {} +    
 
     - name: Ready the springboot non-executable artifacts
       if: ${{ inputs.MAVEN_NON_EXEC_ARTIFACTS }}
       run: |
-          IFS=',' read -ra ARTIFACTS <<< "${{ inputs.MAVEN_NON_EXEC_ARTIFACTS }}"
-          for ARTIFACT in "${ARTIFACTS[@]}"; do
-            artifact_path="*/target/${ARTIFACT}"
-            if ls $artifact_path 1> /dev/null 2>&1; then
-              echo "Adding non-executable ARTIFACT: $artifact_path to release zip"
-              zip -r ${{ inputs.BUILD_ARTIFACT }}.zip $artifact_path
-            else
-              echo "Warning: ARTIFACT $ARTIFACT not found"
-            fi
-          done
+        echo "Preparing non-executable artifacts for zipping..."
+        IFS=',' read -ra ARTIFACTS <<< "${{ inputs.MAVEN_NON_EXEC_ARTIFACTS }}"
+
+        for ARTIFACT in "${ARTIFACTS[@]}"; do
+          ARTIFACT=$(echo "$ARTIFACT" | xargs) # trim spaces
+          # Remove .jar extension to create base name for pattern matching
+          BASE_NAME="${ARTIFACT%.jar}"
+          echo "Searching for artifact pattern: ${BASE_NAME}*.jar"
+  
+          # Search for versioned JARs, excluding sources, javadoc, and tests
+          found_files=$(find ${{ inputs.SERVICE_LOCATION }} -type f -path "*/target/${BASE_NAME}*.jar" ! -executable 2>/dev/null \
+          | grep -Ev '(-sources|-javadoc|-tests)\.jar$' || true)
+  
+          if [ -n "$found_files" ]; then
+            echo "Found non-executable artifact(s):"
+            echo "$found_files"
+    
+            while IFS= read -r file; do
+              if [ -f "$file" ]; then
+                echo "Adding to zip with full path: $file"
+                zip -r ${{ inputs.BUILD_ARTIFACT }}.zip "$file"
+              fi
+            done <<< "$found_files"
+          else
+            echo "Warning: Non-executable artifact matching ${BASE_NAME}*.jar not found in any target directory"
+          fi
+        done
+        echo "Non-executable artifacts have been added to: ${{ inputs.BUILD_ARTIFACT }}.zip"
      
     - name: Upload the springboot jars
       if: ${{ !contains(github.ref, 'master') || !contains(github.ref, 'main') }}
@@ -131,10 +165,10 @@ jobs:
         name: ${{ inputs.BUILD_ARTIFACT }}
         path: ./${{ inputs.BUILD_ARTIFACT }}.zip
 
-    - uses: 8398a7/action-slack@v3
-      with:
-        status: ${{ job.status }}
-        fields: repo,message,author,commit,workflow,job # selectable (default: repo,message)
-      env:
-        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} # required
-      if: "${{ github.event_name != 'pull_request' && failure() }}" # Pick up events even if the job fails or is canceled.
+    # - uses: 8398a7/action-slack@v3
+    #   with:
+    #     status: ${{ job.status }}
+    #     fields: repo,message, author,commit,workflow,job # selectable (default: repo,message)
+    #   env:
+    #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} # required
+    #   if: "${{ github.event_name != 'pull_request' && failure() }}" # Pick up events even if the job fails or is canceled.

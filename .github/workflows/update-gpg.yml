@@ -11,6 +11,9 @@ on:
         description: "Comma-separated list of GitHub usernames to revoke"
         required: false
         type: string
+permissions:
+  contents: write
+
 jobs:
   update_user_map:
     runs-on: ubuntu-latest

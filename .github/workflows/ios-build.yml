@@ -25,18 +25,20 @@ on:
 jobs:
   build_ios:
     name: Building the IPA
-    runs-on: macos-14
+    runs-on: macos-15
 
     steps:
       - uses: actions/checkout@v3.1.0
+
+      - name: Select Xcode 26
+        run: sudo xcode-select -s /Applications/Xcode_26.0.app
+
+      - name: Confirm Xcode version
+        run: xcodebuild -version
+
       - uses: actions/setup-node@v3
         with:
           node-version: ${{ inputs.NODE_VERSION }}
-
-      - name: Set up Swift
-        uses: swift-actions/setup-swift@v2
-        with:
-          swift-version: '5.10.0'
 
       - name: Cache npm dependencies
         uses: actions/cache@v4
@@ -49,7 +51,7 @@ jobs:
       - name: Install CocoaPods
         run: |
           gem uninstall cocoapods -a -x
-          gem install cocoapods -v 1.15.2 --force
+          gem install cocoapods -v 1.16.2 --force
 
       - name: Install npm dependencies
         run: |

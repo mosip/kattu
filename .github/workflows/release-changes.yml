@@ -81,8 +81,8 @@ jobs:
             echo "No Dockerfiles found."
           fi
 
-      - name: removing -DskipTests
-        run: sed -i "s/<skip>true<\/skip>/<skip>false<\/skip>/"       $( find ./ -type f -name "*pom.xml" )
+      #- name: removing -DskipTests
+      #  run: sed -i "s/<skip>true<\/skip>/<skip>false<\/skip>/"       $( find ./ -type f -name "*pom.xml" )
         
       #- name: removing --Dgpg.skip
       #  run: find . -type f -name "*push-trigger.yml" -print0 | xargs -0 sed -i "s/"-Dgpg.skip"//g"
@@ -143,10 +143,10 @@ jobs:
           token: ${{ secrets.ACTION_PAT }}
           signoff: true
 
-      - uses: 8398a7/action-slack@v3
-        with:
-          status: ${{ job.status }}
-          fields: repo,message,author,commit,workflow,job # selectable (default: repo,message)
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} # required
-        if: "${{ github.event_name != 'pull_request' && failure() }}" # Pick up events even if the job fails or is canceled.
+      # - uses: 8398a7/action-slack@v3
+      #   with:
+      #     status: ${{ job.status }}
+      #     fields: repo,message,author,commit,workflow,job # selectable (default: repo,message)
+      #   env:
+      #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} # required
+      #   if: "${{ github.event_name != 'pull_request' && failure() }}" # Pick up events even if the job fails or is canceled.

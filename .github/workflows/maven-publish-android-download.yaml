@@ -1,0 +1,265 @@
+name: Maven build
+
+on:
+  workflow_call:
+    inputs:
+      SERVICE_LOCATION:
+        description: 'Service location'
+        required: true
+        type: string
+      ANDROID_SERVICE_LOCATION:
+        description: "Android Service Location"
+        required: true
+        default: "android"
+        type: string
+      JAVA_VERSION:
+        description: "Java Version"
+        required: false
+        default: 21
+        type: number
+      LICENSE_NAME:
+        description: "License Name"
+        required: false
+        default: "MIT"
+        type: string
+      PUBLICATION_TYPE:
+        description: "Select artifact type to publish: aar, jar, or both"
+        required: false
+        default: both
+        type: string
+      RELEASE_TYPE:
+        description: 'snapshot or release'
+        required: true
+        type: string
+      GROUP_PATH:
+        description: "Maven group path (e.g. io/mosip or io/inji)"
+        required: true
+        type: string
+      FORCE_BUILD:
+        required: false
+        type: string
+        default: 'true'
+    secrets:
+      OSSRH_USER:
+        required: true
+      OSSRH_SECRET:
+        required: true
+      OSSRH_URL:
+        required: true
+      OSSRH_TOKEN:
+        required: true
+      GPG_SECRET:
+        required: true
+      GPG_PRIVATE_KEY:
+        required: true
+      SLACK_WEBHOOK_URL:
+        required: true
+
+jobs:
+  maven-android-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          distribution: adopt
+          java-version: ${{ inputs.JAVA_VERSION }}
+          server-id: ossrh
+          settings-path: ${{ github.workspace }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16'
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle') }}
+          restore-keys: ${{ runner.os }}-gradle-
+
+      - name: Cache npm dependencies
+        uses: actions/cache@v4
+        with:
+          path: '~/.npm'
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
+      - name: Install npm dependencies
+        run: |
+          cd ${{ inputs.SERVICE_LOCATION }}
+          npm install -g yarn
+          yarn install
+
+      - name: Cache local Maven repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: Install xmlstarlet and xmllint
+        run: |
+          sudo rm /etc/apt/sources.list.d/microsoft-prod.list || true
+          sudo apt-get update
+          sudo apt-get install xmlstarlet libxml2-utils gnupg2 -y
+
+      - name: Import GPG key
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_SECRET: ${{ secrets.GPG_SECRET }}
+        run: |
+          if [ -n "$GPG_PRIVATE_KEY" ]; then
+            echo "$GPG_PRIVATE_KEY" | gpg --batch --passphrase "$GPG_SECRET" --pinentry-mode loopback --import
+          else
+            echo "GPG_PRIVATE_KEY not set, skipping import"
+          fi
+
+      - name: Setup branch and GPG KEY_ID
+        run: |
+          echo "BRANCH_NAME=$(echo ${{ github.ref }} | sed -e 's,.*/\(.*\),\1,')" >> $GITHUB_ENV
+          KEY_ID=$(gpg --list-secret-keys --keyid-format LONG | grep sec | awk '{print $2}' | awk -F'/' '{print $2}')
+          echo "Extracted KEY_ID=$KEY_ID"
+          echo "KEY_ID=$KEY_ID" >> $GITHUB_ENV
+
+      - name: Check GPG key age
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          FORCE_BUILD: ${{ inputs.FORCE_BUILD }}
+        run: |
+          if [ -z "$GPG_PRIVATE_KEY" ]; then exit 0; fi
+          CREATED=$(gpg --list-keys --with-colons 2>/dev/null | awk -F: '/^pub/{print $6; exit}')
+          if [ -z "$CREATED" ]; then exit 0; fi
+          NOW=$(date +%s)
+          AGE_DAYS=$(( (NOW - CREATED) / 86400 ))
+          AGE_YEARS=$(echo "scale=1; $AGE_DAYS / 365" | bc)
+          echo "GPG key age: $AGE_DAYS days (~$AGE_YEARS years)"
+          if [ $AGE_DAYS -gt 1095 ]; then
+            if [ "$FORCE_BUILD" = "true" ]; then
+              echo "::warning::GPG key is over 3 years old ($AGE_YEARS years). FORCE_BUILD=true — KEY ROTATION IS OVERDUE."
+            else
+              echo "::error::GPG key is over 3 years old ($AGE_YEARS years). Rotate the key or set FORCE_BUILD=true to override."
+              exit 1
+            fi
+          elif [ $AGE_DAYS -gt 730 ]; then
+            echo "::warning::GPG key is over 2 years old ($AGE_YEARS years). Schedule key rotation soon."
+          fi
+
+      - name: Debug environment variables
+        run: |
+          echo "GROUP_PATH=${{ inputs.GROUP_PATH }}"
+          echo "BRANCH_NAME=${{ env.BRANCH_NAME }}"
+          echo "KEY_ID=${{ env.KEY_ID }}"
+          echo "PUBLICATION_TYPE=${{ inputs.PUBLICATION_TYPE }}"
+          echo "RELEASE_TYPE=${{ inputs.RELEASE_TYPE }}"
+
+      - name: Setup the settings file for ossrh server
+        run: echo "<settings><servers><server><id>ossrh</id><username>${{secrets.OSSRH_USER}}</username><password>${{secrets.OSSRH_SECRET}}</password></server></servers><profiles><profile><id>ossrh</id><activation><activeByDefault>true</activeByDefault></activation><properties><gpg.executable>gpg2</gpg.executable><gpg.passphrase>${{secrets.GPG_SECRET}}</gpg.passphrase></properties></profile><profile><id>allow-snapshots</id><activation><activeByDefault>true</activeByDefault></activation><repositories><repository><id>snapshots-repo</id><url>https://central.sonatype.com/repository/maven-snapshots/</url><releases><enabled>false</enabled></releases><snapshots><enabled>true</enabled></snapshots></repository><repository><id>releases-repo</id><url>https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2/</url><releases><enabled>true</enabled></releases><snapshots><enabled>false</enabled></snapshots></repository><repository><id>danubetech-maven-public</id><url>https://repo.danubetech.com/repository/maven-public/</url></repository></repositories></profile></profiles></settings>" > $GITHUB_WORKSPACE/settings.xml
+
+      - name: Build check for MOSIP License
+        run: |
+          cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}
+          chmod +x ./gradlew
+          ./gradlew generatePom
+          xmlstarlet select -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:licenses[1]/s:license/s:name" -nl build/publications/aar/pom-default.xml | grep -q "${{ inputs.LICENSE_NAME }}"
+
+      - name: Build check for developer
+        run: |
+          cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}
+          ./gradlew generatePom
+          xmlstarlet select -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:developers[1]/s:developer/s:name" -nl build/publications/aar/pom-default.xml | grep -icq "Mosip"
+
+      - name: Build check for commit plugin
+        run: cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }} && xmlstarlet select -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:build/s:plugins/s:plugin[s:groupId='pl.project13.maven']/s:artifactId" -nl build/publications/aar/pom-default.xml | grep -q "git-commit-id-plugin"
+
+      - name: Build check for sign plugin
+        run: cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }} && xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:build/s:plugins/s:plugin[s:groupId='org.apache.maven.plugins']/s:artifactId" -nl build/publications/aar/pom-default.xml | grep -q "maven-gpg-plugin"
+
+      - name: Log pom.xml
+        run: cat ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}/build/publications/aar/pom-default.xml
+
+      - name: Validate pom.xml & settings.xml via xmllint
+        run: |
+          find ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}/build/publications/aar -type f -name pom-default.xml | while read -r F; do
+            xmllint --xpath '/*[local-name()="project"]/*[local-name()="version"]' $F
+          done
+
+      - name: Build with Gradlew
+        env:
+          OSSRH_USER: ${{ secrets.OSSRH_USER }}
+          OSSRH_SECRET: ${{ secrets.OSSRH_SECRET }}
+          OSSRH_URL: ${{ secrets.OSSRH_URL }}
+          GPG_SECRET: ${{ secrets.GPG_SECRET }}
+          RELEASE_TYPE: ${{ inputs.RELEASE_TYPE }}
+
+        run: |
+          cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}
+          ./gradlew assembleRelease
+          # Conditional AAR publishing
+          if [[ "${{ inputs.PUBLICATION_TYPE }}" == "aar" || "${{ inputs.PUBLICATION_TYPE }}" == "both" ]]; then
+            echo "Publishing AAR..."
+            ./gradlew publishAarPublicationToLocalMavenWithChecksumsRepository -Psigning.gnupg.keyName=${{ env.KEY_ID }} -Psigning.gnupg.passphrase=${{ secrets.GPG_SECRET }}
+          else
+            echo "Skipping AAR publication (PUBLICATION_TYPE=${{ inputs.PUBLICATION_TYPE }})"
+          fi
+          
+          # Conditional JAR publishing
+          if [[ "${{ inputs.PUBLICATION_TYPE }}" == "jar" || "${{ inputs.PUBLICATION_TYPE }}" == "both" ]]; then
+            echo "Publishing JAR..."
+            ./gradlew publishJarReleasePublicationToLocalMavenWithChecksumsRepository -Psigning.gnupg.keyName=${{ env.KEY_ID }} -Psigning.gnupg.passphrase=${{ secrets.GPG_SECRET }}
+          else
+            echo "Skipping JAR publication (PUBLICATION_TYPE=${{ inputs.PUBLICATION_TYPE }})"
+          fi
+
+      - name: Show build folder structure
+        run: |
+          echo "Current directory: $(pwd)"
+          find ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}/build
+
+      - name: Prepare and zip build outputs
+        run: |
+          # Go to staging directory
+          cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}/build/staging
+
+          # Extract top-level folder (io) from GROUP_PATH (io/inji or io/mosip)
+          TOP_DIR=$(echo "${{ inputs.GROUP_PATH }}" | cut -d'/' -f1)
+
+          # Delete metadata files safely inside io/*
+          find "$TOP_DIR" -type f -name "maven-metadata*" -delete
+
+          # Zip io/ so structure is preserved (io/inji or io/mosip)
+          zip -r ../../build-outputs.zip "$TOP_DIR"
+
+      - name: Upload zipped build outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}/build/staging/
+
+      - name: Publish to Maven Central
+        env:
+          OSSRH_USER: ${{ secrets.OSSRH_USER }}
+          OSSRH_SECRET: ${{ secrets.OSSRH_SECRET }}
+          OSSRH_URL: ${{ secrets.OSSRH_URL }}
+          GPG_SECRET: ${{ secrets.GPG_SECRET }}
+          RELEASE_TYPE: ${{ inputs.RELEASE_TYPE }}
+        if: "${{ !contains(github.ref, 'master') && github.event_name != 'pull_request' && github.event_name == 'workflow_dispatch' }}"
+        run: |
+          cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}
+          ./gradlew publish -Psigning.gnupg.keyName=${{ env.KEY_ID }} -Psigning.gnupg.passphrase=${{ secrets.GPG_SECRET }}
+
+      # - name: Publish to Slack
+      #   uses: 8398a7/action-slack@v3
+      #   with:
+      #     status: ${{ job.status }}
+      #     fields: repo,message,author,commit,workflow,job
+      #   env:
+      #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      #   if: "${{ github.event_name != 'pull_request' && failure() }}"

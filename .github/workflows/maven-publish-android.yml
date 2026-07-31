@@ -27,7 +27,7 @@ on:
         required: true
         type: string
       GROUP_PATH:
-        description: "Maven group path (e.g. io/mosip or io/inji)"
+        description: "Maven group path (e.g. io/inji)"
         required: true
         type: string
       FORCE_BUILD:

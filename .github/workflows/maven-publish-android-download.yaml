@@ -32,7 +32,7 @@ on:
         required: true
         type: string
       GROUP_PATH:
-        description: "Maven group path (e.g. io/mosip or io/inji)"
+        description: "Maven group path (e.g. io/inji)"
         required: true
         type: string
       FORCE_BUILD:
@@ -228,13 +228,13 @@ jobs:
           # Go to staging directory
           cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}/build/staging
 
-          # Extract top-level folder (io) from GROUP_PATH (io/inji or io/mosip)
+          # Extract top-level folder (io) from GROUP_PATH (io/inji)
           TOP_DIR=$(echo "${{ inputs.GROUP_PATH }}" | cut -d'/' -f1)
 
           # Delete metadata files safely inside io/*
           find "$TOP_DIR" -type f -name "maven-metadata*" -delete
 
-          # Zip io/ so structure is preserved (io/inji or io/mosip)
+          # Zip io/ so structure is preserved (io/inji)
           zip -r ../../build-outputs.zip "$TOP_DIR"
 
       - name: Upload zipped build outputs

@@ -44,13 +44,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
-    - name: Set up JDK 11
+    - name: Set up JDK ${{ inputs.JDK_VERSION }}
       uses: actions/setup-java@v3
       with:
-        distribution: adopt
-        java-version: 11
+        distribution: ${{ inputs.JDK_DISTRIBUTION }}
+        java-version: ${{ inputs.JDK_VERSION }}
         server-id: ossrh # Value of the distributionManagement/repository/id field of the pom.xml
         settings-path: ${{ github.workspace }} # location for the settings.xml file
+
+        
 
     - name: Cache local Maven repository
       uses: actions/cache@v4

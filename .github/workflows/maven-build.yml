@@ -17,6 +17,16 @@ on:
         required: false
         default: "MPL 2.0"
         type: string
+      JDK_VERSION:
+        description: "JDK version to build with"
+        required: false
+        default: "21"
+        type: string
+      JDK_DISTRIBUTION:
+        description: "JDK distribution (e.g. temurin, adopt)"
+        required: false
+        default: "temurin"
+        type: string  
     secrets:
       OSSRH_USER:
         required: true

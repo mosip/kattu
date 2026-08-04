@@ -32,7 +32,7 @@ on:
         required: false
         type: string
         default: 'true'
-   secrets:
+    secrets:
       OSSRH_USER:
         required: true
       OSSRH_SECRET:
@@ -51,6 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
+
     - name: Set up JDK ${{ inputs.JDK_VERSION }}
       uses: actions/setup-java@v3
       with:
@@ -58,8 +59,6 @@ jobs:
         java-version: ${{ inputs.JDK_VERSION }}
         server-id: ossrh # Value of the distributionManagement/repository/id field of the pom.xml
         settings-path: ${{ github.workspace }} # location for the settings.xml file
-
-        
 
     - name: Cache local Maven repository
       uses: actions/cache@v4
@@ -73,7 +72,7 @@ jobs:
       run: |
         # Strip git ref prefix from version
         echo "BRANCH_NAME=$(echo ${{ github.ref }} | sed -e 's,.*/\(.*\),\1,')" >> $GITHUB_ENV
-        echo "GPG_TTY=$(tty)" >> $GITHUB_ENV  
+        echo "GPG_TTY=$(tty)" >> $GITHUB_ENV
 
     - name: Setup branch and GPG public key
       run: |
@@ -117,6 +116,7 @@ jobs:
         elif [ $AGE_DAYS -gt 730 ]; then
           echo "::warning::GPG key is over 2 years old ($AGE_YEARS years). Schedule key rotation soon."
         fi
+
     - name: Install xmlstartlet and xmllint
       run: |
         sudo rm /etc/apt/sources.list.d/microsoft-prod.list
@@ -206,9 +206,10 @@ jobs:
                 </plugin>"
           exit 1
         fi
+
     - name: Build check for sign plugin
       run: cd ${{ inputs.SERVICE_LOCATION }} && xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:build/s:plugins/s:plugin[s:groupId='org.apache.maven.plugins']/s:artifactId" -nl pom.xml | grep -q "maven-gpg-plugin"
-      
+
     - name: Build check for name, url, and description in pom.xml
       run: |
         cd ${{ inputs.SERVICE_LOCATION }}
@@ -252,8 +253,8 @@ jobs:
     - name: Ready the springboot executable artifacts
       if: ${{ !contains(github.ref, 'master') || !contains(github.ref, 'main') }}
       run: |
-        ## FIND JARS & COPY ONLY EXECUTABLE JARs STORED UNDER TARGET DIRECTORY 
-        find ${{ inputs.SERVICE_LOCATION }} -path '*/target/*' -name '*.jar'  -type f  -executable -exec zip ${{ inputs.BUILD_ARTIFACT }}.zip {} +    
+        ## FIND JARS & COPY ONLY EXECUTABLE JARs STORED UNDER TARGET DIRECTORY
+        find ${{ inputs.SERVICE_LOCATION }} -path '*/target/*' -name '*.jar'  -type f  -executable -exec zip ${{ inputs.BUILD_ARTIFACT }}.zip {} +
 
     - name: Ready the springboot non-executable artifacts
       if: ${{ inputs.MAVEN_NON_EXEC_ARTIFACTS }}
@@ -266,15 +267,15 @@ jobs:
           # Remove .jar extension to create base name for pattern matching
           BASE_NAME="${ARTIFACT%.jar}"
           echo "Searching for artifact pattern: ${BASE_NAME}*.jar"
-  
+
           # Search for versioned JARs, excluding sources, javadoc, and tests
           found_files=$(find ${{ inputs.SERVICE_LOCATION }} -type f -path "*/target/${BASE_NAME}*.jar" ! -executable 2>/dev/null \
           | grep -Ev '(-sources|-javadoc|-tests)\.jar$' || true)
-  
+
           if [ -n "$found_files" ]; then
             echo "Found non-executable artifact(s):"
             echo "$found_files"
-    
+
             while IFS= read -r file; do
               if [ -f "$file" ]; then
                 echo "Adding to zip with full path: $file"
@@ -286,7 +287,7 @@ jobs:
           fi
         done
         echo "Non-executable artifacts have been added to: ${{ inputs.BUILD_ARTIFACT }}.zip"
-     
+
     - name: Upload the springboot jars
       if: ${{ !contains(github.ref, 'master') || !contains(github.ref, 'main') }}
       uses: actions/upload-artifact@v4

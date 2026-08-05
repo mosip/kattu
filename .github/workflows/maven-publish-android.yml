@@ -200,7 +200,8 @@ jobs:
           curl -X POST \
             -u ${{ secrets.OSSRH_USER }}:${{ secrets.OSSRH_SECRET }} \
             https://ossrh-staging-api.central.sonatype.com/manual/upload/defaultRepository/io/inji/
-            
+
+      # As part of a move to centralized CI/CD notifications, we're temporarily disabling per-workflow Slack alerts. This avoids duplicate/inconsistent messages while the new centralized routing is rolled out. Build and deployment behavior is unaffected — only notifications are changing.
       # - name: Publish to Slack
       #   uses: 8398a7/action-slack@v3
       #   with:

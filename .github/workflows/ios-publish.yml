@@ -20,6 +20,15 @@ on:
         description: "Application Theme"
         required: true
         type: string
+      LIVENESS_DETECTION:
+        description: "Detect Liveness"
+        required: true
+        type: string
+      ENABLE_AUTH:
+        description: "Enable Authentication"
+        required: true
+        default: "true"
+        type: string
       ALLOW_ENV_EDIT:
         description: "Edit Registry"
         required: true
@@ -43,7 +52,7 @@ on:
         required: true
         default: "ios"
         type: string
-      SCRIPT_NAME: 
+      SCRIPT_NAME:
         description: "Build script name"
         required: true
         default: "fastlane ios_app_build"
@@ -98,10 +107,17 @@ on:
 jobs:
   build_ios:
     name: Deploying to Testflight
-    runs-on: macos-13
+    runs-on: macos-15
 
     steps:
       - uses: actions/checkout@v3.1.0
+
+      - name: Select Xcode 26
+        run: sudo xcode-select -s /Applications/Xcode_26.0.app
+
+      - name: Confirm Xcode version
+        run: xcodebuild -version
+
       - uses: actions/setup-node@v3
         with:
           node-version: ${{ inputs.NODE_VERSION }}
@@ -117,7 +133,7 @@ jobs:
       - name: Install CocoaPods
         run: |
           gem uninstall cocoapods -a -x
-          gem install cocoapods -v 1.15.2 --force
+          gem install cocoapods -v 1.16.2 --force
 
       - name: Install npm dependencies
         run: |
@@ -128,7 +144,14 @@ jobs:
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.IOS_SERVICE_LOCATION }}
           pod install
-          pod install 
+          pod install
+        env:
+          ENABLE_AUTH: ${{ inputs.ENABLE_AUTH }}
+
+      - name: Update Fastlane to Latest Version
+        run: |
+          brew update
+          brew install fastlane          
 
       - name: Deploy iOS Beta to TestFlight
         run: |
@@ -155,6 +178,7 @@ jobs:
           ESIGNET_HOST: ${{ inputs.ESIGNET_HOST }}
           APPLICATION_THEME: ${{ inputs.APPLICATION_THEME }}
           CREDENTIAL_REGISTRY_EDIT: ${{ inputs.ALLOW_ENV_EDIT }}
+          LIVENESS_DETECTION: ${{ inputs.LIVENESS_DETECTION }}
           TESTFLIGHT_INTERNAL_TESTERS_GROUP: ${{ inputs.TESTFLIGHT_INTERNAL_TESTERS_GROUP }}
           TESTFLIGHT_BETA_APP_DESCRIPTION: ${{ inputs.TESTFLIGHT_BETA_APP_DESCRIPTION }}
 

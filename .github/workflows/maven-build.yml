@@ -13,7 +13,7 @@ on:
       DISTRIBUTION:
         description: "Java distribution for the build"
         default: 'temurin'
-        typt: string
+        type: string
       BUILD_ARTIFACT:
         required: true
         type: string

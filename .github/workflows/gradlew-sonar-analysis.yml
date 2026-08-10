@@ -74,17 +74,25 @@ jobs:
             exit 1;
           fi
 
-      - name: Analysis with Sonarcloud
+      - name: Build (compile only)
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}
           sed -i -e 's/\r$//' ./gradlew
           chmod +x ./gradlew
-          ./gradlew build sonarqube \
-            -Dsonar.organization=${{ secrets.ORG_KEY }} \
-            -Dsonar.projectKey=${{ secrets.ORG_KEY }}_${{ github.event.repository.name }} \
-            -Dsonar.projectName=${{ github.event.repository.name }} \
-            -Dsonar.host.url=${{ inputs.SONAR_URL }} \
-            --info --warning-mode all ${{ inputs.SONAR_ARGS }}
+          ./gradlew build
+
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v4
+        with:
+          projectBaseDir: ${{ inputs.SERVICE_LOCATION }}
+          args: >
+            -Dsonar.organization=${{ secrets.ORG_KEY }}
+            -Dsonar.projectKey=${{ secrets.ORG_KEY }}_${{ github.event.repository.name }}
+            -Dsonar.projectName=${{ github.event.repository.name }}
+            ${{ inputs.SONAR_ARGS }}
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ inputs.SONAR_URL }}
 
       # As part of a move to centralized CI/CD notifications, we're temporarily disabling per-workflow Slack alerts. This avoids duplicate/inconsistent messages while the new centralized routing is rolled out. Build and deployment behavior is unaffected — only notifications are changing.
       # - uses: 8398a7/action-slack@v3

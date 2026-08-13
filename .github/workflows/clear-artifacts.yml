@@ -18,6 +18,8 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           expire-in: 2days # Setting this to 0 will delete all artifacts
+
+# As part of a move to centralized CI/CD notifications, we're temporarily disabling per-workflow Slack alerts. This avoids duplicate/inconsistent messages while the new centralized routing is rolled out. Build and deployment behavior is unaffected — only notifications are changing.          
 #     - uses: 8398a7/action-slack@v3
 #       with:
 #         status: ${{ job.status }}

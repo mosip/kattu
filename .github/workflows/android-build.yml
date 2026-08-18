@@ -8,7 +8,7 @@ on:
         type: string
       JAVA_VERSION:
         description: "Java version for the build"
-        default: "11"
+        default: "17"
         type: string
       MIMOTO_HOST:
         description: "Mimoto backend service URL"

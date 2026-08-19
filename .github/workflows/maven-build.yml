@@ -160,7 +160,7 @@ jobs:
         check_pom "pom.xml"
 
         # Get the list of modules from the main pom.xml file
-        modules=$(xmlstarlet sel -N s="${namespace}" -t -v "//s:project/s:modules/s:module" pom.xml)
+        modules=$(xmlstarlet sel -N s="${namespace}" -t -v "//s:project/s:modules/s:module" pom.xml 2>/dev/null || true)
 
         # Iterate over each module and check the pom.xml file
         for module in $modules; do

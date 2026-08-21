@@ -1,0 +1,79 @@
+name: Verify keycloak-init Roles
+
+on:
+  workflow_call:
+    inputs:
+      kc_values_file_path:
+        required: true
+        type: string
+
+jobs:
+  verify-roles:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install PyYAML
+        run: pip install pyyaml
+
+      - name: Debug YAML file contents
+        run: cat ${{ inputs.kc_values_file_path }}
+
+      - name: Create Python script
+        run: |
+          echo "
+          import yaml
+          import sys
+
+          def extract_roles_and_saroles(file_path):
+              with open(file_path, 'r') as file:
+                  data = yaml.safe_load(file)
+
+              # Access the 'saroles' for each client
+              saroles_set = set()
+              for client in data.get('keycloak', {}).get('realms', {}).get('mosip', {}).get('clients', []):
+                  saroles = client.get('saroles', [])
+                  if saroles:
+                      saroles_set.update(saroles)
+
+              # Extract roles
+              roles_set = set(data['keycloak']['realms']['mosip'].get('roles', []))
+
+              # Print each unique sarole
+              print('\\nsaroles:')
+              for sarole in sorted(saroles_set):
+                  print(f'- {sarole}')
+
+              # Print each role
+              print('\\nroles:')
+              for role in sorted(roles_set):
+                  print(f'- {role}')
+
+              # Check if all saroles are in roles
+              missing_saroles = saroles_set - roles_set
+              if missing_saroles:
+                  print('\\nERROR: The following saroles are not listed in roles:')
+                  for missing in sorted(missing_saroles):
+                      print(f'- {missing}')
+                  return 1  # Indicate failure
+              else:
+                  print('\\nAll saroles are listed in roles.')
+                  return 0  # Indicate success
+
+          if __name__ == '__main__':
+              sys.exit(extract_roles_and_saroles('${{ inputs.kc_values_file_path }}'))
+          " > extract_roles_saroles.py
+
+      - name: Run Python script
+        id: run-script
+        run: python extract_roles_saroles.py
+
+      - name: Fail if saroles are missing from roles
+        if: steps.run-script.outcome == 'failure'
+        run: exit 1

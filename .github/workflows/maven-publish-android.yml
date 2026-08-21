@@ -12,6 +12,24 @@ on:
         required: true
         default: "android"
         type: string
+      JAVA_VERSION:
+        description: "Java Version"
+        required: false
+        default: 21
+        type: number
+      LICENSE_NAME:
+        description: "License Name"
+        required: false
+        default: "MIT"
+        type: string
+      RELEASE_TYPE:
+        description: 'snapshot or release'
+        required: true
+        type: string
+      GROUP_PATH:
+        description: "Maven group path (e.g. io/mosip or io/inji)"
+        required: true
+        type: string
       FORCE_BUILD:
         required: false
         type: string
@@ -37,11 +55,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - name: Set up JDK 11
+      - name: Set up JDK
         uses: actions/setup-java@v3
         with:
           distribution: adopt
-          java-version: 11
+          java-version: ${{ inputs.JAVA_VERSION }}
           server-id: ossrh # Value of the distributionManagement/repository/id field of the pom.xml
           settings-path: ${{ github.workspace }} # location for the settings.xml file
 
@@ -81,9 +99,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
 
-      - name: Setup branch and env
+      - name: Install xmlstartlet and xmllint
         run: |
-          echo "BRANCH_NAME=$(echo ${{ github.ref }} | sed -e 's,.*/\(.*\),\1,')" >> $GITHUB_ENV
+          sudo rm /etc/apt/sources.list.d/microsoft-prod.list
+          sudo apt-get update
+          sudo apt-get install xmlstarlet libxml2-utils gnupg2 -y
 
       - name: Import GPG key
         env:
@@ -95,6 +115,13 @@ jobs:
           else
             echo "GPG_PRIVATE_KEY not set, skipping import"
           fi
+
+      - name: Setup branch and GPG KEY_ID
+        run: |
+          echo "BRANCH_NAME=$(echo ${{ github.ref }} | sed -e 's,.*/\(.*\),\1,')" >> $GITHUB_ENV
+          KEY_ID=$(gpg --list-secret-keys --keyid-format LONG | grep sec | awk '{print $2}' | awk -F'/' '{print $2}')
+          echo "Extracted KEY_ID=$KEY_ID"
+          echo "KEY_ID=$KEY_ID" >> $GITHUB_ENV
 
       - name: Check GPG key age
         env:
@@ -119,21 +146,15 @@ jobs:
             echo "::warning::GPG key is over 2 years old ($AGE_YEARS years). Schedule key rotation soon."
           fi
 
-      - name: Install xmlstartlet and xmllint
-        run: |
-          sudo rm /etc/apt/sources.list.d/microsoft-prod.list
-          sudo apt-get update
-          sudo apt-get install xmlstarlet libxml2-utils
-
       - name: Setup the settings file for ossrh server
-        run: echo "<settings> <servers> <server> <id>ossrh</id> <username>${{secrets.OSSRH_USER}}</username> <password>${{secrets.OSSRH_SECRET}}</password> </server> </servers> <profiles> <profile> <id>ossrh</id> <activation> <activeByDefault>true</activeByDefault> </activation> <properties> <gpg.executable>gpg2</gpg.executable> <gpg.passphrase>${{secrets.GPG_SECRET}}</gpg.passphrase> </properties> </profile> <profile> <id>allow-snapshots</id> <activation><activeByDefault>true</activeByDefault></activation> <repositories> <repository> <id>snapshots-repo</id> <url>https://oss.sonatype.org/content/repositories/snapshots</url> <releases><enabled>false</enabled></releases> <snapshots><enabled>true</enabled></snapshots> </repository> <repository> <id>releases-repo</id> <url>https://oss.sonatype.org/service/local/staging/deploy/maven2</url> <releases><enabled>true</enabled></releases> <snapshots><enabled>false</enabled></snapshots> </repository> <repository> <id>danubetech-maven-public</id> <url>https://repo.danubetech.com/repository/maven-public/</url> </repository> </repositories> </profile> <profile> <id>sonar</id> <properties> <sonar.sources>.</sonar.sources> <sonar.host.url>https://sonarcloud.io</sonar.host.url> </properties> <activation> <activeByDefault>false</activeByDefault> </activation> </profile> </profiles> </settings>" > $GITHUB_WORKSPACE/settings.xml
+        run: echo "<settings> <servers> <server> <id>ossrh</id> <username>${{secrets.OSSRH_USER}}</username> <password>${{secrets.OSSRH_SECRET}}</password> </server> </servers> <profiles> <profile> <id>ossrh</id> <activation> <activeByDefault>true</activeByDefault> </activation> <properties> <gpg.executable>gpg2</gpg.executable> <gpg.passphrase>${{secrets.GPG_SECRET}}</gpg.passphrase> </properties> </profile> <profile> <id>allow-snapshots</id> <activation><activeByDefault>true</activeByDefault></activation> <repositories> <repository> <id>snapshots-repo</id> <url>https://central.sonatype.com/repository/maven-snapshots/</url> <releases><enabled>false</enabled></releases> <snapshots><enabled>true</enabled></snapshots> </repository> <repository> <id>releases-repo</id> <url>https://ossrh-staging-api.central.sonatype.com/manual/upload/defaultRepository/io/inji</url> <releases><enabled>true</enabled></releases> <snapshots><enabled>false</enabled></snapshots> </repository> <repository> <id>releases-repo</id> <url>https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2/</url> <releases><enabled>true</enabled></releases> <snapshots><enabled>false</enabled></snapshots> </repository> <repository> <id>danubetech-maven-public</id> <url>https://repo.danubetech.com/repository/maven-public/</url> </repository> </repositories> </profile> <profile> <id>sonar</id> <properties> <sonar.sources>.</sonar.sources> <sonar.host.url>https://sonarcloud.io</sonar.host.url> </properties> <activation> <activeByDefault>false</activeByDefault> </activation> </profile> </profiles> </settings>" > $GITHUB_WORKSPACE/settings.xml
 
-      - name: Build check for MOSIP License
+      - name: Build check for  License
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}
           chmod +x ./gradlew
           ./gradlew generatePom
-          xmlstarlet select -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:licenses[1]/s:license/s:name" -nl build/publications/aar/pom-default.xml | grep -q "MIT"
+          xmlstarlet select -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:licenses[1]/s:license/s:name" -nl build/publications/aar/pom-default.xml | grep -q "${{ inputs.LICENSE_NAME }}"
 
       - name: Build check for developer
         run: |
@@ -147,27 +168,40 @@ jobs:
       - name: Build check for sign plugin
         run: cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }} && xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:build/s:plugins/s:plugin[s:groupId='org.apache.maven.plugins']/s:artifactId" -nl build/publications/aar/pom-default.xml | grep -q "maven-gpg-plugin"
 
+      - name: Log pom.xml
+        run: cat ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}/build/publications/aar/pom-default.xml
+
       - name: Validate pom.xml & settings.xml via xmllint
         run: |
-          find ${{ inputs.SERVICE_LOCATION }}/android/build/publications/aar -type f -name pom-default.xml | while read -r F; do
+          find ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}/build/publications/aar -type f -name pom-default.xml | while read -r F; do
             xmllint --xpath '/*[local-name()="project"]/*[local-name()="version"]' $F
           done
 
       - name: Build with Gradlew
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}
-          ./gradlew assembleDebug
+          ./gradlew assembleRelease
 
       - name: Publish to Maven Central
         env:
           OSSRH_USER: ${{secrets.OSSRH_USER}}
           OSSRH_SECRET: ${{secrets.OSSRH_SECRET}}
           OSSRH_URL: ${{secrets.OSSRH_URL}}
+          GPG_SECRET: ${{secrets.GPG_SECRET}}
+          RELEASE_TYPE: ${{ inputs.RELEASE_TYPE }}
         if: "${{ !contains(github.ref, 'master') && github.event_name != 'pull_request' &&  github.event_name == 'workflow_dispatch' }}"
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}
-          ./gradlew publish
+          ./gradlew publish -Psigning.gnupg.keyName=${{env.KEY_ID}} -Psigning.gnupg.passphrase=${{secrets.GPG_SECRET}}
+          
+      - name: Trigger staging repository creation
+        if: "${{ !contains(github.ref, 'master') && github.event_name != 'pull_request' &&  github.event_name == 'workflow_dispatch' }}"
+        run: |
+          curl -X POST \
+            -u ${{ secrets.OSSRH_USER }}:${{ secrets.OSSRH_SECRET }} \
+            https://ossrh-staging-api.central.sonatype.com/manual/upload/defaultRepository/io/inji/
 
+      # As part of a move to centralized CI/CD notifications, we're temporarily disabling per-workflow Slack alerts. This avoids duplicate/inconsistent messages while the new centralized routing is rolled out. Build and deployment behavior is unaffected — only notifications are changing.
       # - name: Publish to Slack
       #   uses: 8398a7/action-slack@v3
       #   with:

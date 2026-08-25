@@ -25,7 +25,7 @@ on:
       SONAR_EXCLUSIONS:
         required: false
         type: string
-        default: '**/node_modules/**'
+        default: '**/node_modules/**,**/__tests__/**,**/test-utils/**,**/setupTests.ts'
 
     secrets:
       SONAR_TOKEN:

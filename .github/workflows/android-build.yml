@@ -1,16 +1,42 @@
 name: Android Build
 
-env:
-  DUMMY_DEBUG_KEYSTORE_PASSWORD: 'password'
-
 on:
   workflow_call:
     inputs:
       NODE_VERSION:
         default: "16.x"
         type: string
-      DEBUG_KEYSTORE_ALIAS:
-        default: androiddebugkey
+      JAVA_VERSION:
+        description: "Java version for the build"
+        default: "17"
+        type: string
+      MIMOTO_HOST:
+        description: "Mimoto backend service URL"
+        default: "https://api.sandbox.mosip.net"
+        type: string
+      ESIGNET_HOST:
+        description: "Esignet backend service URL"
+        default: "https://api.sandbox.mosip.net"
+        type: string
+      KEYSTORE_ALIAS:
+        required: true
+        default: androidbuildkey
+        type: string
+      KEYSTORE_PASSWORD:
+        required: true
+        default: password
+        type: string
+      UPLOAD_TO_ACTIONS:
+        default: 'false'
+        required: true
+        type: string
+      APPLICATION_THEME:
+        description: "Application Theme"
+        default: 'orange'
+        type: string
+      ALLOW_ENV_EDIT:
+        description: "Edit ENV"
+        default: 'true'
         type: string
       SERVICE_LOCATION:
         description: "Service Location"
@@ -27,14 +53,23 @@ on:
         required: true
         default: "scripts"
         type: string
-      SCRIPT_NAME: 
+      SCRIPT_NAME:
         description: "Build script name"
         required: true
         default: "./android-build.sh"
         type: string
-    secrets:
-      DEBUG_KEYSTORE_PASSWORD:
-        required: true
+      ANDROID_ARTIFACT_NAME:
+        description: "Android Artifact name"
+        default: "Android App"
+        type: string
+      ANDROID_ARTIFACT_PATH:
+        description: "Android Artifact path"
+        default: "android/app/build/outputs"
+        type: string
+      APPLICATION_TYPE:
+        description: "Apk type"
+        default: "release"
+        type: string
 
 jobs:
   build-android:
@@ -44,6 +79,12 @@ jobs:
       - uses: actions/setup-node@v3
         with:
           node-version: ${{ inputs.NODE_VERSION }}
+
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'adopt'
+          java-version: ${{ inputs.JAVA_VERSION }}
 
       - name: Cache npm dependencies
         uses: actions/cache@v4
@@ -62,7 +103,7 @@ jobs:
         run: |
           echo "BRANCH_NAME=$(echo ${{ github.ref }} | sed -e 's,.*/\(.*\),\1,')" >> $GITHUB_ENV
 
-      - name: Generate keystore for build
+      - name: Generate Dummy keystore for build
         run: |
           keytool \
           -genkey -v \
@@ -70,20 +111,34 @@ jobs:
           -keyalg RSA \
           -keysize 2048 \
           -validity 10000 \
-          -storepass $DEBUG_KEYSTORE_PASSWORD \
-          -keypass $DEBUG_KEYSTORE_PASSWORD \
-          -alias $DEBUG_KEYSTORE_ALIAS \
-          -keystore android/app/debug.keystore \
+          -storepass $KEYSTORE_PASSWORD \
+          -keypass $KEYSTORE_PASSWORD \
+          -alias $KEYSTORE_ALIAS \
+          -keystore android/app/${{ inputs.APPLICATION_TYPE }}.keystore \
           -dname "CN=io.mosip.residentapp,OU=,O=,L=,S=,C=US"
         env:
-          DEBUG_KEYSTORE_PASSWORD: ${{ secrets.DEBUG_KEYSTORE_PASSWORD || env.DUMMY_DEBUG_KEYSTORE_PASSWORD }}
-          DEBUG_KEYSTORE_ALIAS: ${{ inputs.DEBUG_KEYSTORE_ALIAS }}
+          KEYSTORE_PASSWORD: ${{ inputs.KEYSTORE_PASSWORD }}
+          KEYSTORE_ALIAS: ${{ inputs.KEYSTORE_ALIAS }}
 
       - name: Create Build
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}
           cd ${{ inputs.BUILD_SCRIPT_LOCATION }}
-          ${{ inputs.SCRIPT_NAME }}
+          ${{ inputs.SCRIPT_NAME }} "${{ inputs.APPLICATION_TYPE }}"
         env:
-          DEBUG_KEYSTORE_ALIAS: ${{ inputs.DEBUG_KEYSTORE_ALIAS }}
-          DEBUG_KEYSTORE_PASSWORD: ${{ secrets.DEBUG_KEYSTORE_PASSWORD || env.DUMMY_DEBUG_KEYSTORE_PASSWORD }}
+          MIMOTO_HOST: ${{ inputs.MIMOTO_HOST }}
+          ESIGNET_HOST: ${{ inputs.ESIGNET_HOST }}
+          APPLICATION_THEME: ${{ inputs.APPLICATION_THEME }}
+          RELEASE_KEYSTORE_ALIAS: ${{ inputs.KEYSTORE_ALIAS }}
+          DEBUG_KEYSTORE_ALIAS: ${{ inputs.KEYSTORE_ALIAS }}
+          RELEASE_KEYSTORE_PASSWORD: ${{ inputs.KEYSTORE_PASSWORD }}
+          DEBUG_KEYSTORE_PASSWORD: ${{ inputs.KEYSTORE_PASSWORD }}
+          CREDENTIAL_REGISTRY_EDIT: ${{ inputs.ALLOW_ENV_EDIT }}
+      
+      - name: Upload Artifact to Actions
+        if: ${{ inputs.UPLOAD_TO_ACTIONS == 'true'}}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.ANDROID_ARTIFACT_NAME }}
+          path: ${{ inputs.ANDROID_ARTIFACT_PATH }}
+          retention-days: 10

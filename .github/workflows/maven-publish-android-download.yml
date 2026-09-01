@@ -22,6 +22,11 @@ on:
         required: false
         default: "MIT"
         type: string
+      PUBLICATION_TYPE:
+        description: "Select artifact type to publish: aar, jar, or both"
+        required: false
+        default: both
+        type: string
       RELEASE_TYPE:
         description: 'snapshot or release'
         required: true
@@ -55,13 +60,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+
       - name: Set up JDK
         uses: actions/setup-java@v3
         with:
           distribution: adopt
           java-version: ${{ inputs.JAVA_VERSION }}
-          server-id: ossrh # Value of the distributionManagement/repository/id field of the pom.xml
-          settings-path: ${{ github.workspace }} # location for the settings.xml file
+          server-id: ossrh
+          settings-path: ${{ github.workspace }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v3
@@ -88,8 +94,8 @@ jobs:
       - name: Install npm dependencies
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}
-          npm install -g yarn # Install yarn globally if you're using yarn
-          yarn install # or `npm install` if using npm
+          npm install -g yarn
+          yarn install
 
       - name: Cache local Maven repository
         uses: actions/cache@v4
@@ -99,9 +105,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
 
-      - name: Install xmlstartlet and xmllint
+      - name: Install xmlstarlet and xmllint
         run: |
-          sudo rm /etc/apt/sources.list.d/microsoft-prod.list
+          sudo rm /etc/apt/sources.list.d/microsoft-prod.list || true
           sudo apt-get update
           sudo apt-get install xmlstarlet libxml2-utils gnupg2 -y
 
@@ -146,10 +152,18 @@ jobs:
             echo "::warning::GPG key is over 2 years old ($AGE_YEARS years). Schedule key rotation soon."
           fi
 
-      - name: Setup the settings file for ossrh server
-        run: echo "<settings> <servers> <server> <id>ossrh</id> <username>${{secrets.OSSRH_USER}}</username> <password>${{secrets.OSSRH_SECRET}}</password> </server> </servers> <profiles> <profile> <id>ossrh</id> <activation> <activeByDefault>true</activeByDefault> </activation> <properties> <gpg.executable>gpg2</gpg.executable> <gpg.passphrase>${{secrets.GPG_SECRET}}</gpg.passphrase> </properties> </profile> <profile> <id>allow-snapshots</id> <activation><activeByDefault>true</activeByDefault></activation> <repositories> <repository> <id>snapshots-repo</id> <url>https://central.sonatype.com/repository/maven-snapshots/</url> <releases><enabled>false</enabled></releases> <snapshots><enabled>true</enabled></snapshots> </repository> <repository> <id>releases-repo</id> <url>https://ossrh-staging-api.central.sonatype.com/manual/upload/defaultRepository/io/inji</url> <releases><enabled>true</enabled></releases> <snapshots><enabled>false</enabled></snapshots> </repository> <repository> <id>releases-repo</id> <url>https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2/</url> <releases><enabled>true</enabled></releases> <snapshots><enabled>false</enabled></snapshots> </repository> <repository> <id>danubetech-maven-public</id> <url>https://repo.danubetech.com/repository/maven-public/</url> </repository> </repositories> </profile> <profile> <id>sonar</id> <properties> <sonar.sources>.</sonar.sources> <sonar.host.url>https://sonarcloud.io</sonar.host.url> </properties> <activation> <activeByDefault>false</activeByDefault> </activation> </profile> </profiles> </settings>" > $GITHUB_WORKSPACE/settings.xml
+      - name: Debug environment variables
+        run: |
+          echo "GROUP_PATH=${{ inputs.GROUP_PATH }}"
+          echo "BRANCH_NAME=${{ env.BRANCH_NAME }}"
+          echo "KEY_ID=${{ env.KEY_ID }}"
+          echo "PUBLICATION_TYPE=${{ inputs.PUBLICATION_TYPE }}"
+          echo "RELEASE_TYPE=${{ inputs.RELEASE_TYPE }}"
 
-      - name: Build check for  License
+      - name: Setup the settings file for ossrh server
+        run: echo "<settings><servers><server><id>ossrh</id><username>${{secrets.OSSRH_USER}}</username><password>${{secrets.OSSRH_SECRET}}</password></server></servers><profiles><profile><id>ossrh</id><activation><activeByDefault>true</activeByDefault></activation><properties><gpg.executable>gpg2</gpg.executable><gpg.passphrase>${{secrets.GPG_SECRET}}</gpg.passphrase></properties></profile><profile><id>allow-snapshots</id><activation><activeByDefault>true</activeByDefault></activation><repositories><repository><id>snapshots-repo</id><url>https://central.sonatype.com/repository/maven-snapshots/</url><releases><enabled>false</enabled></releases><snapshots><enabled>true</enabled></snapshots></repository><repository><id>releases-repo</id><url>https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2/</url><releases><enabled>true</enabled></releases><snapshots><enabled>false</enabled></snapshots></repository><repository><id>danubetech-maven-public</id><url>https://repo.danubetech.com/repository/maven-public/</url></repository></repositories></profile></profiles></settings>" > $GITHUB_WORKSPACE/settings.xml
+
+      - name: Build check for MOSIP License
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}
           chmod +x ./gradlew
@@ -178,35 +192,75 @@ jobs:
           done
 
       - name: Build with Gradlew
+        env:
+          OSSRH_USER: ${{ secrets.OSSRH_USER }}
+          OSSRH_SECRET: ${{ secrets.OSSRH_SECRET }}
+          OSSRH_URL: ${{ secrets.OSSRH_URL }}
+          GPG_SECRET: ${{ secrets.GPG_SECRET }}
+          RELEASE_TYPE: ${{ inputs.RELEASE_TYPE }}
+
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}
           ./gradlew assembleRelease
+          # Conditional AAR publishing
+          if [[ "${{ inputs.PUBLICATION_TYPE }}" == "aar" || "${{ inputs.PUBLICATION_TYPE }}" == "both" ]]; then
+            echo "Publishing AAR..."
+            ./gradlew publishAarPublicationToLocalMavenWithChecksumsRepository -Psigning.gnupg.keyName=${{ env.KEY_ID }} -Psigning.gnupg.passphrase=${{ secrets.GPG_SECRET }}
+          else
+            echo "Skipping AAR publication (PUBLICATION_TYPE=${{ inputs.PUBLICATION_TYPE }})"
+          fi
+          
+          # Conditional JAR publishing
+          if [[ "${{ inputs.PUBLICATION_TYPE }}" == "jar" || "${{ inputs.PUBLICATION_TYPE }}" == "both" ]]; then
+            echo "Publishing JAR..."
+            ./gradlew publishJarReleasePublicationToLocalMavenWithChecksumsRepository -Psigning.gnupg.keyName=${{ env.KEY_ID }} -Psigning.gnupg.passphrase=${{ secrets.GPG_SECRET }}
+          else
+            echo "Skipping JAR publication (PUBLICATION_TYPE=${{ inputs.PUBLICATION_TYPE }})"
+          fi
+
+      - name: Show build folder structure
+        run: |
+          echo "Current directory: $(pwd)"
+          find ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}/build
+
+      - name: Prepare and zip build outputs
+        run: |
+          # Go to staging directory
+          cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}/build/staging
+
+          # Extract top-level folder (io) from GROUP_PATH (io/inji or io/mosip)
+          TOP_DIR=$(echo "${{ inputs.GROUP_PATH }}" | cut -d'/' -f1)
+
+          # Delete metadata files safely inside io/*
+          find "$TOP_DIR" -type f -name "maven-metadata*" -delete
+
+          # Zip io/ so structure is preserved (io/inji or io/mosip)
+          zip -r ../../build-outputs.zip "$TOP_DIR"
+
+      - name: Upload zipped build outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}/build/staging/
 
       - name: Publish to Maven Central
         env:
-          OSSRH_USER: ${{secrets.OSSRH_USER}}
-          OSSRH_SECRET: ${{secrets.OSSRH_SECRET}}
-          OSSRH_URL: ${{secrets.OSSRH_URL}}
-          GPG_SECRET: ${{secrets.GPG_SECRET}}
+          OSSRH_USER: ${{ secrets.OSSRH_USER }}
+          OSSRH_SECRET: ${{ secrets.OSSRH_SECRET }}
+          OSSRH_URL: ${{ secrets.OSSRH_URL }}
+          GPG_SECRET: ${{ secrets.GPG_SECRET }}
           RELEASE_TYPE: ${{ inputs.RELEASE_TYPE }}
-        if: "${{ !contains(github.ref, 'master') && github.event_name != 'pull_request' &&  github.event_name == 'workflow_dispatch' }}"
+        if: "${{ !contains(github.ref, 'master') && github.event_name != 'pull_request' && github.event_name == 'workflow_dispatch' }}"
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}/${{ inputs.ANDROID_SERVICE_LOCATION }}
-          ./gradlew publish -Psigning.gnupg.keyName=${{env.KEY_ID}} -Psigning.gnupg.passphrase=${{secrets.GPG_SECRET}}
-          
-      - name: Trigger staging repository creation
-        if: "${{ !contains(github.ref, 'master') && github.event_name != 'pull_request' &&  github.event_name == 'workflow_dispatch' }}"
-        run: |
-          curl -X POST \
-            -u ${{ secrets.OSSRH_USER }}:${{ secrets.OSSRH_SECRET }} \
-            https://ossrh-staging-api.central.sonatype.com/manual/upload/defaultRepository/io/inji/
+          ./gradlew publish -Psigning.gnupg.keyName=${{ env.KEY_ID }} -Psigning.gnupg.passphrase=${{ secrets.GPG_SECRET }}
 
       # As part of a move to centralized CI/CD notifications, we're temporarily disabling per-workflow Slack alerts. This avoids duplicate/inconsistent messages while the new centralized routing is rolled out. Build and deployment behavior is unaffected — only notifications are changing.
       # - name: Publish to Slack
       #   uses: 8398a7/action-slack@v3
       #   with:
       #     status: ${{ job.status }}
-      #     fields: repo,message,author,commit,workflow,job # selectable (default: repo,message)
+      #     fields: repo,message,author,commit,workflow,job
       #   env:
-      #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} # required
-      #   if: "${{ github.event_name != 'pull_request' && failure() }}" # Pick up events even if the job fails or is canceled.
+      #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      #   if: "${{ github.event_name != 'pull_request' && failure() }}"

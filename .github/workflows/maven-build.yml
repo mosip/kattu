@@ -9,7 +9,26 @@ on:
       BUILD_ARTIFACT:
         required: true
         type: string
+      MAVEN_NON_EXEC_ARTIFACTS:
+        required: false
+        type: string
+      LICENSE_NAME:
+        description: "License Name"
+        required: false
+        default: "MPL 2.0"
+        type: string
+      JDK_VERSION:
+        description: "JDK version to build with"
+        required: false
+        default: "21"
+        type: string
+      JDK_DISTRIBUTION:
+        description: "JDK distribution (e.g. temurin, adopt)"
+        required: false
+        default: "temurin"
+        type: string
       FORCE_BUILD:
+        description: "Set to 'true' to bypass the GPG key age gate when the key is over 3 years old"
         required: false
         type: string
         default: 'true'
@@ -32,11 +51,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
-    - name: Set up JDK 11
+
+    - name: Set up JDK ${{ inputs.JDK_VERSION }}
       uses: actions/setup-java@v3
       with:
-        distribution: adopt
-        java-version: 11
+        distribution: ${{ inputs.JDK_DISTRIBUTION }}
+        java-version: ${{ inputs.JDK_VERSION }}
         server-id: ossrh # Value of the distributionManagement/repository/id field of the pom.xml
         settings-path: ${{ github.workspace }} # location for the settings.xml file
 
@@ -50,7 +70,9 @@ jobs:
 
     - name: Setup branch and env
       run: |
+        # Strip git ref prefix from version
         echo "BRANCH_NAME=$(echo ${{ github.ref }} | sed -e 's,.*/\(.*\),\1,')" >> $GITHUB_ENV
+        echo "GPG_TTY=$(tty)" >> $GITHUB_ENV
 
     - name: Import GPG key
       env:
@@ -96,7 +118,9 @@ jobs:
       run: echo "<settings><servers><server><id>ossrh</id><username>${{secrets.OSSRH_USER}}</username><password>${{secrets.OSSRH_SECRET}}</password></server></servers><profiles><profile><id>ossrh</id><activation><activeByDefault>true</activeByDefault></activation><properties><gpg.executable>gpg2</gpg.executable><gpg.passphrase>${{secrets.GPG_SECRET}}</gpg.passphrase></properties></profile><profile><id>allow-snapshots</id><activation><activeByDefault>true</activeByDefault></activation><repositories><repository><id>snapshots-repo</id><url>https://central.sonatype.com/repository/maven-snapshots</url><releases><enabled>false</enabled></releases><snapshots><enabled>true</enabled></snapshots></repository><repository><id>releases-repo</id><url>https://central.sonatype.com/api/v1/publisher</url><releases><enabled>true</enabled></releases><snapshots><enabled>false</enabled></snapshots></repository><repository><id>danubetech-maven-public</id><url>https://repo.danubetech.com/repository/maven-public/</url></repository><repository><id>nexus-snapshots</id><url>https://oss.sonatype.org/content/repositories/snapshots</url></repository></repositories></profile><profile><id>sonar</id><properties><sonar.sources>.</sonar.sources><sonar.host.url>https://sonarcloud.io</sonar.host.url></properties><activation><activeByDefault>false</activeByDefault></activation></profile></profiles></settings>" > $GITHUB_WORKSPACE/settings.xml
 
     - name: Build check for MOSIP License
-      run: cd ${{ inputs.SERVICE_LOCATION }} && xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:licenses[1]/s:license/s:name" -nl pom.xml | grep -q "MPL 2.0"
+      run: |
+        cd ${{ inputs.SERVICE_LOCATION }}
+        xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:licenses[1]/s:license/s:name" -nl pom.xml | grep -q "${{ inputs.LICENSE_NAME }}"
 
     - name: Build check for developer
       run: cd ${{ inputs.SERVICE_LOCATION }} && xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:developers[1]/s:developer/s:name" -nl pom.xml | grep -icq "Mosip"
@@ -104,17 +128,17 @@ jobs:
     - name: Build check for commit plugin
       run: |
         cd ${{ inputs.SERVICE_LOCATION }}
-        
+
         namespace="http://maven.apache.org/POM/4.0.0"
         xpath_query="//s:project/s:build/s:plugins/s:plugin[s:groupId='pl.project13.maven'][s:artifactId='git-commit-id-plugin']/s:configuration[s:generateGitPropertiesFile='true'][s:generateGitPropertiesFilename='\${project.build.outputDirectory}/service-git.properties']"
-        
+
         # Initialize error count
         error_count=0
-        
+
         # Print namespace and xpath_query for debugging
         echo "Namespace: ${namespace}"
         echo "XPath Query: ${xpath_query}"
-        
+
         # Function to check a single pom.xml file
         check_pom() {
           local pom_file=$1
@@ -123,27 +147,27 @@ jobs:
             error_count=$((error_count + 1))
             return
           fi
-        
-          output=$(xmlstarlet sel -N s="${namespace}" -t -v "${xpath_query}" -nl "$pom_file")
-          
-          if [[ $? -ne 0 || -z "$output" ]]; then
+
+          output=$(xmlstarlet sel -N s="${namespace}" -t -v "${xpath_query}" -nl "$pom_file" 2>/dev/null || true)
+
+          if [[ -z "$output" ]]; then
             echo "Error : required commit-id-plugin or configuration not found in $pom_file."
             error_count=$((error_count + 1))
           fi
         }
-        
+
         # Check the main pom.xml file
         check_pom "pom.xml"
-        
+
         # Get the list of modules from the main pom.xml file
-        modules=$(xmlstarlet sel -N s="${namespace}" -t -v "//s:project/s:modules/s:module" pom.xml)
-        
+        modules=$(xmlstarlet sel -N s="${namespace}" -t -v "//s:project/s:modules/s:module" pom.xml 2>/dev/null || true)
+
         # Iterate over each module and check the pom.xml file
         for module in $modules; do
           echo "module - $module"
           check_pom "$module/pom.xml"
         done
-        
+
         if [[ $error_count -gt 0 ]]; then
           echo "Correct commit-id-plugin value is as shown below"
           echo "<plugin>
@@ -177,6 +201,19 @@ jobs:
     - name: Build check for sign plugin
       run: cd ${{ inputs.SERVICE_LOCATION }} && xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:build/s:plugins/s:plugin[s:groupId='org.apache.maven.plugins']/s:artifactId" -nl pom.xml | grep -q "maven-gpg-plugin"
 
+    - name: Build check for name, url, and description in pom.xml
+      run: |
+        cd ${{ inputs.SERVICE_LOCATION }}
+        echo "Checking for project name in pom.xml"
+        xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:name" -nl pom.xml | grep -q "."
+        echo "Project name found"
+        echo "Checking for project URL in pom.xml"
+        xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:url" -nl pom.xml | grep -q "."
+        echo "Project url found"
+        echo "Checking for project description in pom.xml"
+        xmlstarlet sel -N s="http://maven.apache.org/POM/4.0.0" -t -v "//s:project/s:description" -nl pom.xml | grep -q "."
+        echo "Project description found"
+
     - name: Validate pom.xml & settings.xml via xmllint
       run: |
         find ${{ inputs.SERVICE_LOCATION }} -type f -name pom.xml | while read -r F; do
@@ -207,8 +244,8 @@ jobs:
     - name: Ready the springboot executable artifacts
       if: ${{ !contains(github.ref, 'master') || !contains(github.ref, 'main') }}
       run: |
-        ## FIND JARS & COPY ONLY EXECUTABLE JARs STORED UNDER TARGET DIRECTORY 
-        find ${{ inputs.SERVICE_LOCATION }} -path '*/target/*' -name '*.jar'  -type f  -executable -exec zip ${{ inputs.BUILD_ARTIFACT }}.zip {} +    
+        ## FIND JARS & COPY ONLY EXECUTABLE JARs STORED UNDER TARGET DIRECTORY
+        find ${{ inputs.SERVICE_LOCATION }} -path '*/target/*' -name '*.jar'  -type f  -executable -exec zip ${{ inputs.BUILD_ARTIFACT }}.zip {} +
 
     - name: Ready the springboot non-executable artifacts
       if: ${{ inputs.MAVEN_NON_EXEC_ARTIFACTS }}
@@ -221,15 +258,15 @@ jobs:
           # Remove .jar extension to create base name for pattern matching
           BASE_NAME="${ARTIFACT%.jar}"
           echo "Searching for artifact pattern: ${BASE_NAME}*.jar"
-  
+
           # Search for versioned JARs, excluding sources, javadoc, and tests
           found_files=$(find ${{ inputs.SERVICE_LOCATION }} -type f -path "*/target/${BASE_NAME}*.jar" ! -executable 2>/dev/null \
           | grep -Ev '(-sources|-javadoc|-tests)\.jar$' || true)
-  
+
           if [ -n "$found_files" ]; then
             echo "Found non-executable artifact(s):"
             echo "$found_files"
-    
+
             while IFS= read -r file; do
               if [ -f "$file" ]; then
                 echo "Adding to zip with full path: $file"
@@ -249,10 +286,11 @@ jobs:
         name: ${{ inputs.BUILD_ARTIFACT }}
         path: ./${{ inputs.BUILD_ARTIFACT }}.zip
 
+    # As part of a move to centralized CI/CD notifications, we're temporarily disabling per-workflow Slack alerts. This avoids duplicate/inconsistent messages while the new centralized routing is rolled out. Build and deployment behavior is unaffected — only notifications are changing.
     # - uses: 8398a7/action-slack@v3
     #   with:
     #     status: ${{ job.status }}
-    #     fields: repo,message,author,commit,workflow,job # selectable (default: repo,message)
+    #     fields: repo,message, author,commit,workflow,job # selectable (default: repo,message)
     #   env:
     #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} # required
     #   if: "${{ github.event_name != 'pull_request' && failure() }}" # Pick up events even if the job fails or is canceled.

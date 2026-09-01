@@ -1,0 +1,89 @@
+name: Go Build Reusable Workflow
+
+on:
+  workflow_call:
+    inputs:
+      SERVICE_LOCATION:
+        required: true
+        type: string
+
+      BUILD_BINARY:
+        required: true
+        type: string
+
+      GO_VERSION:
+        required: false
+        type: string
+        default: '1.26'
+
+    secrets:
+      SLACK_WEBHOOK_URL:
+        required: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ${{ inputs.SERVICE_LOCATION }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ inputs.GO_VERSION }}
+      - name: Cache Go Modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+
+      - name: Download Dependencies
+        run: |
+          go mod download
+      - name: Verify Dependencies
+        run: |
+          go mod verify
+
+      - name: Run Lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.12.2
+          working-directory: ${{ inputs.SERVICE_LOCATION }}
+
+      - name: Run Tests
+        run: |
+          go test ./... -v -coverprofile=coverage.out
+
+      - name: Debug
+        run: |
+          pwd
+          ls -la
+          ls -la cmd/
+
+      - name: Build Binary
+        run: |
+          mkdir -p build
+
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+          go build -o build/${{ inputs.BUILD_BINARY }} ./cmd/${{ inputs.BUILD_BINARY }}
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.BUILD_BINARY }}
+          path: |
+            ${{ inputs.SERVICE_LOCATION }}/build/${{ inputs.BUILD_BINARY }}
+
+      # As part of a move to centralized CI/CD notifications, we're temporarily disabling per-workflow Slack alerts. This avoids duplicate/inconsistent messages while the new centralized routing is rolled out. Build and deployment behavior is unaffected — only notifications are changing.
+      # - uses: 8398a7/action-slack@v3
+      #   with:
+      #     status: ${{ job.status }}
+      #     fields: repo,message,author,commit,workflow,job # selectable (default: repo,message)
+      #   env:
+      #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} # required
+      #   if: "${{ github.event_name != 'pull_request' && failure() }}" # Pick up events even if the job fails or is canceled.            

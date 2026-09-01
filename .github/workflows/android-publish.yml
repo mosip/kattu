@@ -10,6 +10,10 @@ on:
       NODE_VERSION:
         default: "16.x"
         type: string
+      JAVA_VERSION:
+        description: "Java version for the build"
+        default: "11"
+        type: string
       RELEASE_KEYSTORE_ALIAS:
         default: androidreleasekey
         type: string
@@ -34,6 +38,10 @@ on:
         type: string
       ALLOW_ENV_EDIT:
         description: "Edit ENV"
+        required: true
+        type: string
+      LIVENESS_DETECTION:
+        description: "Detect Liveness"
         required: true
         type: string
       ANDROID_ARTIFACT_NAME:
@@ -80,6 +88,8 @@ on:
         required: true
       SLACK_WEBHOOK_URL:
         required: true
+      GOOGLE_ANDROID_CLIENT_ID:
+        required: true
 
 jobs:
   deploy-android:
@@ -89,6 +99,12 @@ jobs:
       - uses: actions/setup-node@v3
         with:
           node-version: ${{ inputs.NODE_VERSION }}
+          
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'adopt'
+          java-version: ${{ inputs.JAVA_VERSION }}
 
       - name: Cache npm dependencies
         uses: actions/cache@v4
@@ -142,9 +158,11 @@ jobs:
           RELEASE_KEYSTORE_ALIAS: ${{ inputs.RELEASE_KEYSTORE_ALIAS }}
           RELEASE_KEYSTORE_PASSWORD: "${{secrets.RELEASE_KEYSTORE_PASSWORD}}"
           CREDENTIAL_REGISTRY_EDIT: ${{ inputs.ALLOW_ENV_EDIT }}
+          LIVENESS_DETECTION: ${{ inputs.LIVENESS_DETECTION }}
           SLACK_WEBHOOK_URL: "${{ secrets.SLACK_WEBHOOK_URL }}"
           BUILD_DESCRIPTION: ${{ inputs.BUILD_DESCRIPTION }}
           APP_FLAVOR: ${{ inputs.APP_FLAVOR }}
+          GOOGLE_ANDROID_CLIENT_ID: ${{secrets.GOOGLE_ANDROID_CLIENT_ID}}
 
       - name: Create Beta build and upload to play console
         if: ${{ inputs.RELEASE == 'beta' }}
@@ -159,9 +177,11 @@ jobs:
           RELEASE_KEYSTORE_ALIAS: ${{ inputs.RELEASE_KEYSTORE_ALIAS }}
           RELEASE_KEYSTORE_PASSWORD: "${{secrets.RELEASE_KEYSTORE_PASSWORD}}"
           CREDENTIAL_REGISTRY_EDIT: ${{ inputs.ALLOW_ENV_EDIT }}
+          LIVENESS_DETECTION: ${{ inputs.LIVENESS_DETECTION }}
           SLACK_WEBHOOK_URL: "${{ secrets.SLACK_WEBHOOK_URL }}"
           BUILD_DESCRIPTION: ${{ inputs.BUILD_DESCRIPTION }}
           APP_FLAVOR: ${{ inputs.APP_FLAVOR }}
+          GOOGLE_ANDROID_CLIENT_ID: ${{secrets.GOOGLE_ANDROID_CLIENT_ID}}
 
       - name: Create Build
         run: |
@@ -175,6 +195,8 @@ jobs:
           RELEASE_KEYSTORE_ALIAS: ${{ inputs.RELEASE_KEYSTORE_ALIAS }}
           RELEASE_KEYSTORE_PASSWORD: "${{secrets.RELEASE_KEYSTORE_PASSWORD}}"
           CREDENTIAL_REGISTRY_EDIT: ${{ inputs.ALLOW_ENV_EDIT }}
+          LIVENESS_DETECTION: ${{ inputs.LIVENESS_DETECTION }}
+          GOOGLE_ANDROID_CLIENT_ID: ${{secrets.GOOGLE_ANDROID_CLIENT_ID}}
           
       - name: Upload Artifact to Actions
         uses: actions/upload-artifact@v4
@@ -183,6 +205,7 @@ jobs:
           path: ${{ inputs.ANDROID_ARTIFACT_PATH }}
           retention-days: 10
 
+      # As part of a move to centralized CI/CD notifications, we're temporarily disabling per-workflow Slack alerts. This avoids duplicate/inconsistent messages while the new centralized routing is rolled out. Build and deployment behavior is unaffected — only notifications are changing.
       # - uses: 8398a7/action-slack@v3
       #   with:
       #     status: ${{ job.status }}

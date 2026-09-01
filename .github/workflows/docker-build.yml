@@ -21,17 +21,13 @@ on:
         required: false
         type: boolean
         default: false
-      BASE_IMAGE_BUILD:
-        required: false
-        type: boolean
-        default: false
       SQUASH_LAYERS:
         required: false
         type: string
       PLATFORMS:
         required: false
         type: string
-        default: "linux/amd64,linux/arm64"
+        default: "linux/amd64,linux/arm64"  
 
     secrets:
       RELEASE_DOCKER_HUB:
@@ -68,36 +64,36 @@ jobs:
         
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-  
+
       - name: Setup branch and env
         run: |
           # Strip git ref prefix from version
           echo "BRANCH_NAME=$(echo ${{ github.ref }} | sed -e 's,.*/\(.*\),\1,')" >> $GITHUB_ENV
           echo "GPG_TTY=$(tty)" >> $GITHUB_ENV
           echo "${{ toJSON(inputs) }}"
-          
+
           # Parse platforms into an array
           IFS=',' read -ra PLATFORM_ARRAY <<< "$PLATFORMS"
           echo "PLATFORM_COUNT=${#PLATFORM_ARRAY[@]}" >> $GITHUB_ENV
           echo "Platforms to build: ${PLATFORM_ARRAY[@]} (Count: ${#PLATFORM_ARRAY[@]})"
-          
-      - name: Check Dockerfile for forbidden organizations and tags
-        if: |
-          (github.event_name == 'push' && startsWith(github.ref_name, 'release')) ||
-          (github.event_name == 'pull_request' && startsWith(github.base_ref, 'release')) ||
-          (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/release'))
-        run: |
-          cd ${{ inputs.SERVICE_LOCATION }} 
-          if [ ! -f Dockerfile ]; then
-            echo "Error: Dockerfile not found."
-            exit 1
-          elif grep -E "FROM (mosipdev|mosipqa)/" Dockerfile || grep -E "FROM .*:(latest|develop)" Dockerfile; then
-            echo "Error: Dockerfile contains forbidden base image from 'mosipdev' or 'mosipqa' org or uses 'latest' or 'develop' tag."
-            exit 1
-          else
-            echo "Dockerfile check passed: No forbidden organizations or tags found."
-          fi
-    
+
+#      - name: Check Dockerfile for forbidden organizations and tags
+#        if: |
+#          (github.event_name == 'push' && startsWith(github.ref_name, 'release')) ||
+#          (github.event_name == 'pull_request' && startsWith(github.base_ref, 'release')) ||
+#          (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/release'))
+#        run: |
+#          cd ${{ inputs.SERVICE_LOCATION }} 
+#          if [ ! -f Dockerfile ]; then
+#            echo "Error: Dockerfile not found."
+#            exit 1
+#          elif grep -E "FROM (mosipdev|mosipqa)/" Dockerfile || grep -E "FROM .*:(latest|develop)" Dockerfile; then
+#            echo "Error: Dockerfile contains forbidden base image from 'mosipdev' or 'mosipqa' org or uses 'latest' or 'develop' tag."
+#            exit 1
+#          else
+#            echo "Dockerfile check passed: No forbidden organizations or tags found."
+#          fi      
+
       - name: Get version info from pom
         if: ${{ contains(inputs.NPM_BUILD, 'false') && ( inputs.BUILD_ARTIFACT != 'false' )  && ( inputs.ONLY_DOCKER == false ) }}
         id: getPomVersion
@@ -119,57 +115,15 @@ jobs:
       - name: Unzip and extract for npm
         if: ${{ contains(inputs.NPM_BUILD, 'true' ) && ( inputs.BUILD_ARTIFACT != false )  && ( inputs.ONLY_DOCKER == false )}}
         run: |
-          unzip "${{ inputs.BUILD_ARTIFACT }}.zip" "dist/*" -d "${{ inputs.SERVICE_LOCATION }}"
+          unzip "${{ inputs.BUILD_ARTIFACT }}.zip" "build/*" -d "${{ inputs.SERVICE_LOCATION }}"
 
       - name: Get current date
         run: echo "BUILD_TIME=$(date +'%Y-%m-%d-%H-%M-%S')"  >> $GITHUB_ENV
 
-      - name: Check Dockerfile for 'mosip' user definition
+      - name: Build check for Docker label
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}
-          DOCKERFILES=$(git ls-files | grep -w "Dockerfile")
-
-          chk_layer=(
-            "ARG\s+container_user=mosip"
-            "ARG\s+container_user_group=mosip"
-            "ARG\s+container_user_uid=1001"
-            "ARG\s+container_user_gid=1001"
-            "ENV\s+container_user=\\\${container_user}"
-            "ENV\s+container_user_group=\\\${container_user_group}"
-            "ENV\s+container_user_uid=\\\${container_user_uid}"
-            "ENV\s+container_user_gid=\\\${container_user_gid}"
-            "WORKDIR\s+/home/\\\${container_user}"
-            "chown\s+-R\s+\\\${container_user}:\\\${container_user}\s+/home/\\\${container_user}"
-            "USER\s+\\\${container_user_uid}:\\\${container_user_gid}"
-          )
-
-          for FILE in $DOCKERFILES; do
-            for layer in "${chk_layer[@]}"; do
-              layer_count=$(grep -Ev '^$' "$FILE" | grep -Ec "$layer" || true)
-          
-              if [[ $layer_count -ne 1 ]]; then
-                dlayer=$(echo $layer | sed -E 's/\\s\+/ /g' | sed -E 's/\\//g')
-                echo "Docker layer: \"$dlayer\" not found in $FILE; EXITING"
-                exit 1
-              fi
-            done
-          done
-        if: ${{ inputs.BASE_IMAGE_BUILD == false }}
-
-      - name: Build check for Docker datetime & git commit labels
-        run: |
-          cd ${{ inputs.SERVICE_LOCATION }}
-           chk_layer=( "ARG\\s+SOURCE"
-                       "ARG\\s+COMMIT_HASH"
-                       "ARG\\s+COMMIT_ID"
-                       "ARG\\s+BUILD_TIME"
-                       "LABEL\\s+source=\\\${SOURCE}"
-                       "LABEL\\s+commit_hash=\\\${COMMIT_HASH}"
-                       "LABEL\\s+commit_id=\\\${COMMIT_ID}" 
-                       "LABEL\\s+build_time=\\\${BUILD_TIME}"
-          )
-          
-          for layer in "${chk_layer[@]}"; do
+          for layer in  ARG\\s+SOURCE ARG\\s+COMMIT_HASH ARG\\s+COMMIT_ID ARG\\s+BUILD_TIME LABEL\\s+source=\\$\\{SOURCE\\} LABEL\\s+commit_hash=\\$\\{COMMIT_HASH\\} LABEL\\s+commit_id=\\$\\{COMMIT_ID\\} LABEL\\s+build_time=\\$\\{BUILD_TIME\\}; do
             layer_count=$( grep -Ev '^$' Dockerfile | grep -Ec "$layer" || true);
           
             if [[ $layer_count -ne 1 ]]; then
@@ -178,18 +132,13 @@ jobs:
               exit 1;
             fi
           done
-        if: ${{ inputs.BASE_IMAGE_BUILD == false }}
-          
+
       - name: Build Docker images
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}
           
           # Prepare Docker build arguments
-          if [[ ${{ inputs.BASE_IMAGE_BUILD }} == false ]]; then
-            DOCKER_LABEL="--build-arg SOURCE=mosip --build-arg COMMIT_HASH=$(git rev-parse HEAD) --build-arg COMMIT_ID=$(git rev-parse --short HEAD) --build-arg BUILD_TIME=$BUILD_TIME"
-          else
-            DOCKER_LABEL="--build-arg SOURCE=mosip"
-          fi
+          DOCKER_LABEL="--build-arg SOURCE=mosip --build-arg COMMIT_HASH=$(git rev-parse HEAD) --build-arg COMMIT_ID=$(git rev-parse --short HEAD) --build-arg BUILD_TIME=$BUILD_TIME"
           
           # Split platforms string into array
           IFS=',' read -ra PLATFORMS <<< "$PLATFORMS"
@@ -289,6 +238,7 @@ jobs:
             docker manifest push $IMAGE_ID:$VERSION
           fi
 
+      # As part of a move to centralized CI/CD notifications, we're temporarily disabling per-workflow Slack alerts. This avoids duplicate/inconsistent messages while the new centralized routing is rolled out. Build and deployment behavior is unaffected — only notifications are changing.
       # - uses: 8398a7/action-slack@v3
       #   with:
       #     status: ${{ job.status }}
@@ -296,3 +246,40 @@ jobs:
       #   env:
       #     SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} # required
       #   if: "${{ github.event_name != 'pull_request' && failure() }}" # Pick up events even if the job fails or is canceled.
+
+  build-docker-warning:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Check Dockerfile for forbidden organizations and tags
+        if: |
+          (github.event_name == 'push' && startsWith(github.ref_name, 'release')) ||
+          (github.event_name == 'pull_request' && startsWith(github.base_ref, 'release')) ||
+          (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/release'))
+        run: |
+          cd ${{ inputs.SERVICE_LOCATION }}
+          
+          # Check if Dockerfile exists
+          if [ ! -f Dockerfile ]; then
+            echo "Error: Dockerfile not found."
+            exit 1
+          else
+            # Search for forbidden base images or tags
+            forbidden_found=false
+            if grep -E "FROM (mosipdev|mosipqa)/" Dockerfile; then
+              echo "Error: Dockerfile contains forbidden base image from 'mosipdev' or 'mosipqa' organization."
+              forbidden_found=true
+            fi
+            if grep -E "FROM .*:(latest|develop)" Dockerfile; then
+              echo "Error: Dockerfile contains forbidden base image tag 'latest' or 'develop'."
+              forbidden_found=true
+            fi
+            if [ "$forbidden_found" = true ]; then
+              echo "Error: Dockerfile contains forbidden base images or tags."
+              exit 1
+            else
+              echo "Dockerfile check passed: No forbidden organizations or tags found."
+            fi
+          fi

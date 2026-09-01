@@ -34,10 +34,10 @@ jobs:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
-          
+
       - name: Setup Sonar Scanner
         run: brew install sonar-scanner
-      
+
       - name: Setup Java 17
         uses: actions/setup-java@v3
         with:
@@ -58,7 +58,7 @@ jobs:
             echo "SONAR_URL environmental variable not set; EXITING;"
             exit 1
           fi
-      
+
       - name: Generate Code Coverage
         run: |
           cd ${{ inputs.SERVICE_LOCATION }}
@@ -71,7 +71,7 @@ jobs:
 
           # Check if Tests directory exists and is not empty
           if [ -d "Tests" ] && [ "$(ls -A Tests 2>/dev/null)" ]; then
-                
+          
               DERIVED_DATA='.build/DerivedData'
               # Run tests with xcodebuild for iOS simulator
               xcodebuild test \
@@ -82,7 +82,7 @@ jobs:
 
               # Find test bundle and executable
               TEST_BUNDLE=$(find $DERIVED_DATA -type d -name "*.xctest" | head -n 1)
-              
+          
               if [ -n "$TEST_BUNDLE" ]; then
                 TEST_EXECUTABLE=$(find "$DERIVED_DATA/Build/Products" \
                   -name "${{ inputs.TEST_SCHEME }}*.xctest" \
@@ -129,7 +129,8 @@ jobs:
             -Dsonar.host.url=${{ inputs.SONAR_URL }} \
             -Dsonar.swift.coverage.reportPaths=${{ inputs.SERVICE_LOCATION }}/coverage.report \
             -Dsonar.sourceEncoding=UTF-8
-      
+
+      # As part of a move to centralized CI/CD notifications, we're temporarily disabling per-workflow Slack alerts. This avoids duplicate/inconsistent messages while the new centralized routing is rolled out. Build and deployment behavior is unaffected — only notifications are changing.
       # - uses: 8398a7/action-slack@v3
       #   with:
       #     status: ${{ job.status }}

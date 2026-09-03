@@ -39,7 +39,7 @@ jobs:
           ${{ runner.os }}-npm-
 
     - name: NPM Install
-      run: cd ${{ inputs.SERVICE_LOCATION }} && npm install
+      run: cd ${{ inputs.SERVICE_LOCATION }} && npm install --legacy-peer-deps
 
     - name: NPM Build for NG
       if: ${{ inputs.NPM_BUILD_TYPE == 'NG' }}

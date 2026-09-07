@@ -44,7 +44,7 @@ jobs:
           ${{ runner.os }}-npm-
 
     - name: NPM Install
-      run: cd ${{ inputs.SERVICE_LOCATION }} && npm install
+      run: cd ${{ inputs.SERVICE_LOCATION }} && npm install --legacy-peer-deps
 
     - name: NPM Build for NG
       if: ${{ inputs.NPM_BUILD_TYPE == 'NG' }}
@@ -53,7 +53,7 @@ jobs:
     - name: NPM Build for BOB
       if: ${{ inputs.NPM_BUILD_TYPE == 'BOB' }}
       run: |
-        echo "ZIP_DIR=lib" >> $GITHUB_ENV
+        echo "ZIP_DIR=${{ inputs.ZIP_DIR }}" >> $GITHUB_ENV
         cd ${{ inputs.SERVICE_LOCATION }} && npm run build
 
     - name: Zip Build Application

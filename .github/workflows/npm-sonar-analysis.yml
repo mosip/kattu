@@ -9,6 +9,9 @@ on:
       NODE_VERSION:
         default: '14'
         type: string
+      PROJECT_KEY:
+        required: true
+        type: string
       SONAR_URL:
         required: false
         type: string

@@ -15,6 +15,10 @@ on:
         required: false
         type: string
         default: '1.26'
+      LINT_VERSION:
+        required: false
+        type: string
+        default: 'v2.12.2'
 
     secrets:
       SLACK_WEBHOOK_URL:
@@ -52,7 +56,8 @@ jobs:
       - name: Run Lint
         uses: golangci/golangci-lint-action@v8
         with:
-          version: v2.12.2
+          version: ${{ inputs.LINT_VERSION }}
+          install-mode: goinstall
           working-directory: ${{ inputs.SERVICE_LOCATION }}
 
       - name: Run Tests

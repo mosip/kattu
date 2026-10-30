@@ -30,7 +30,7 @@ on:
 
 jobs:
   create_jira:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Login to Jira
         uses: atlassian/gajira-login@v2.0.0

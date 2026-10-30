@@ -17,7 +17,7 @@ on:
 jobs:
   check-existing-tag:
     name: Check Existing Tag
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -61,7 +61,7 @@ jobs:
   create-releases-from-csv:
     name: Create Releases from CSV
     needs: check-existing-tag
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
         uses: actions/checkout@v3

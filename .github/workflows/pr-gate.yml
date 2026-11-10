@@ -56,7 +56,7 @@ on:
         type: string
         default: 'HIGH,CRITICAL'
       trivy_comment_mode:
-        description: '"full" = comment all current HIGH/CRITICAL; "diff" = comment only newly introduced ones'
+        description: '"full" = comment on, and gate on, all current HIGH/CRITICAL; "diff" = comment on, and gate on, only findings newly introduced by the PR'
         required: false
         type: string
         default: 'full'
@@ -86,9 +86,12 @@ on:
         required: false
 
 # A new push to a PR cancels that PR's still-running gate, so superseded runs do
-# not keep occupying the org's shared runner pool. Never cancels push runs.
+# not keep occupying the org's shared runner pool. Push runs get a unique group
+# (the run id), so they are never cancelled or replaced while pending -- GitHub
+# keeps only one pending run per group, which would otherwise drop a push run's
+# SARIF upload and cache refresh.
 concurrency:
-  group: pr-gate-${{ github.event.pull_request.number || github.ref }}
+  group: pr-gate-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -155,16 +158,26 @@ jobs:
       # this PR's own diff touches a stack-marker file or Dockerfile -- a PR
       # that introduces a new stack must still be scanned for it immediately,
       # not only after it merges and the cache next updates.
+      # The cache is used only when (a) it records the same location inputs the
+      # caller passes now, (b) the base..head diff could be computed, and (c) the
+      # diff touches no marker file. The marker pattern matches the discovery rule
+      # below (Dockerfile or Dockerfile.<anything>). The checkout above is a full
+      # clone, so no depth-limited fetch is done here: that could make the repo
+      # shallow and lose the merge-base.
       - name: Decide whether to use the cached detection
         id: mode
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          INPUTS_KEY: ${{ inputs.SERVICE_LOCATION }}|${{ inputs.JAVA_SERVICE_LOCATION }}|${{ inputs.GO_SERVICE_LOCATION }}|${{ inputs.NPM_SERVICE_LOCATION }}|${{ inputs.ANDROID_SERVICE_LOCATION }}|${{ inputs.FLUTTER_SERVICE_LOCATION }}
         run: |
           USE_CACHE=false
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            BASE_REF="${{ github.event.pull_request.base.ref }}"
-            git fetch --depth=100 origin "$BASE_REF" 2>/dev/null || true
-            if git show "origin/$BASE_REF:.pr-gate-cache.json" > /tmp/pr-gate-cache.json 2>/dev/null; then
-              CHANGED="$(git diff --name-only "origin/$BASE_REF"...HEAD 2>/dev/null || echo "")"
-              if ! echo "$CHANGED" | grep -qE '(^|/)(pom\.xml|go\.mod|package\.json|settings\.gradle(\.kts)?|pubspec\.yaml|Dockerfile(\.[A-Za-z0-9_-]+)?)$'; then
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            git fetch origin "$BASE_REF" 2>/dev/null || true
+            if git show "origin/$BASE_REF:.pr-gate-cache.json" > /tmp/pr-gate-cache.json 2>/dev/null \
+               && [ "$(jq -r '.inputs_key // ""' /tmp/pr-gate-cache.json)" = "$INPUTS_KEY" ] \
+               && CHANGED="$(git diff --name-only "origin/$BASE_REF"...HEAD 2>/dev/null)"; then
+              if ! echo "$CHANGED" | grep -qE '(^|/)(pom\.xml|go\.mod|package\.json|settings\.gradle(\.kts)?|pubspec\.yaml|Dockerfile(\.[^/]*)?)$'; then
                 USE_CACHE=true
               fi
             fi
@@ -227,24 +240,59 @@ jobs:
           python3 - <<'PYEOF'
           import re, os, json
 
-          stage_pattern = re.compile(r'^\s*FROM\s+(\S+)(?:\s+[Aa][Ss]\s+(\S+))?', re.IGNORECASE)
+          from_pattern = re.compile(r'^\s*FROM\s+(.+?)\s*$', re.IGNORECASE)
+          arg_pattern = re.compile(r'^\s*ARG\s+([A-Za-z_][A-Za-z0-9_]*)(?:=(.*?))?\s*$', re.IGNORECASE)
+          var_pattern = re.compile(r'\$\{([A-Za-z_][A-Za-z0-9_]*)(?::?-([^}]*))?\}|\$([A-Za-z_][A-Za-z0-9_]*)')
+          # Only characters legal in an image reference. Anything else (shell
+          # metacharacters, quotes, spaces) is dropped: these values flow into
+          # later steps and must never be able to carry code.
+          valid_image = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._/:@-]*$')
           base_images = set()
           for root, dirs, files in os.walk('.'):
               dirs[:] = [d for d in dirs if d not in ('.git', 'node_modules', 'vendor')]
               for f in files:
                   if f == 'Dockerfile' or f.startswith('Dockerfile.'):
                       aliases = set()
+                      global_args = {}
+                      seen_from = False
                       path = os.path.join(root, f)
                       with open(path, encoding='utf-8', errors='ignore') as fh:
                           for line in fh:
-                              m = stage_pattern.match(line)
+                              # ARGs declared before the first FROM are the only
+                              # ones FROM itself can reference.
+                              if not seen_from:
+                                  am = arg_pattern.match(line)
+                                  if am:
+                                      global_args[am.group(1)] = (am.group(2) or '').strip().strip('"\'')
+                                      continue
+                              m = from_pattern.match(line)
                               if not m:
                                   continue
-                              image, alias = m.group(1), m.group(2)
+                              seen_from = True
+                              # Drop flags such as --platform=..., then
+                              # "<image> [AS <alias>]".
+                              tokens = [t for t in m.group(1).split() if not t.startswith('--')]
+                              if not tokens:
+                                  continue
+                              image = tokens[0]
+                              alias = tokens[2] if len(tokens) >= 3 and tokens[1].lower() == 'as' else None
+
+                              def _sub(mo):
+                                  name = mo.group(1) or mo.group(3)
+                                  default = mo.group(2)
+                                  value = global_args.get(name)
+                                  if value is None or value == '':
+                                      value = default if default is not None else ''
+                                  return value
+                              image = var_pattern.sub(_sub, image)
+
                               # Skip references to a previously-defined build
-                              # stage alias (not a real pullable image) and
-                              # FROM scratch (not a real image either).
-                              if image.lower() not in aliases and image.lower() != 'scratch':
+                              # stage alias (not a real pullable image),
+                              # FROM scratch, and anything still unresolved.
+                              if (image and '$' not in image
+                                      and image.lower() not in aliases
+                                      and image.lower() != 'scratch'
+                                      and valid_image.match(image)):
                                   base_images.add(image)
                               if alias:
                                   aliases.add(alias.lower())
@@ -256,41 +304,69 @@ jobs:
           PYEOF
 
       - name: Print detected stacks
+        env:
+          MODE_CACHED: ${{ steps.mode.outputs.use_cache }}
+          HAS_JAVA: ${{ steps.detect.outputs.has_java || steps.cached.outputs.has_java }}
+          JAVA_LOC: ${{ steps.detect.outputs.java_location || steps.cached.outputs.java_location }}
+          HAS_GO: ${{ steps.detect.outputs.has_go || steps.cached.outputs.has_go }}
+          GO_LOC: ${{ steps.detect.outputs.go_location || steps.cached.outputs.go_location }}
+          HAS_NPM: ${{ steps.detect.outputs.has_npm || steps.cached.outputs.has_npm }}
+          NPM_LOC: ${{ steps.detect.outputs.npm_location || steps.cached.outputs.npm_location }}
+          HAS_ANDROID: ${{ steps.detect.outputs.has_android || steps.cached.outputs.has_android }}
+          ANDROID_LOC: ${{ steps.detect.outputs.android_location || steps.cached.outputs.android_location }}
+          HAS_FLUTTER: ${{ steps.detect.outputs.has_flutter || steps.cached.outputs.has_flutter }}
+          FLUTTER_LOC: ${{ steps.detect.outputs.flutter_location || steps.cached.outputs.flutter_location }}
+          IMAGES_JSON: ${{ steps.discover.outputs.images || steps.cached.outputs.images }}
         run: |
-          echo "Mode:    $([ '${{ steps.mode.outputs.use_cache }}' = 'true' ] && echo cached || echo live)"
-          echo "Java:    ${{ steps.detect.outputs.has_java || steps.cached.outputs.has_java }}  (${{ steps.detect.outputs.java_location || steps.cached.outputs.java_location }})"
-          echo "Go:      ${{ steps.detect.outputs.has_go || steps.cached.outputs.has_go }}  (${{ steps.detect.outputs.go_location || steps.cached.outputs.go_location }})"
-          echo "npm:     ${{ steps.detect.outputs.has_npm || steps.cached.outputs.has_npm }}  (${{ steps.detect.outputs.npm_location || steps.cached.outputs.npm_location }})"
-          echo "Android: ${{ steps.detect.outputs.has_android || steps.cached.outputs.has_android }}  (${{ steps.detect.outputs.android_location || steps.cached.outputs.android_location }})"
-          echo "Flutter: ${{ steps.detect.outputs.has_flutter || steps.cached.outputs.has_flutter }}  (${{ steps.detect.outputs.flutter_location || steps.cached.outputs.flutter_location }})"
-          echo "Docker base images: ${{ steps.discover.outputs.images || steps.cached.outputs.images }}"
+          echo "Mode:    $([ "$MODE_CACHED" = 'true' ] && echo cached || echo live)"
+          echo "Java:    $HAS_JAVA  ($JAVA_LOC)"
+          echo "Go:      $HAS_GO  ($GO_LOC)"
+          echo "npm:     $HAS_NPM  ($NPM_LOC)"
+          echo "Android: $HAS_ANDROID  ($ANDROID_LOC)"
+          echo "Flutter: $HAS_FLUTTER  ($FLUTTER_LOC)"
+          echo "Docker base images: $IMAGES_JSON"
 
       # Only runs on push (whatever branch the caller triggers this on) --
       # persists the fresh detection as the cache the next PR's detect job
       # will read, avoiding a live re-scan on every single PR.
       - name: Write stack-detection cache
         if: github.event_name == 'push'
+        env:
+          INPUTS_KEY: ${{ inputs.SERVICE_LOCATION }}|${{ inputs.JAVA_SERVICE_LOCATION }}|${{ inputs.GO_SERVICE_LOCATION }}|${{ inputs.NPM_SERVICE_LOCATION }}|${{ inputs.ANDROID_SERVICE_LOCATION }}|${{ inputs.FLUTTER_SERVICE_LOCATION }}
+          HAS_JAVA: ${{ steps.detect.outputs.has_java }}
+          HAS_GO: ${{ steps.detect.outputs.has_go }}
+          HAS_NPM: ${{ steps.detect.outputs.has_npm }}
+          HAS_ANDROID: ${{ steps.detect.outputs.has_android }}
+          HAS_FLUTTER: ${{ steps.detect.outputs.has_flutter }}
+          JAVA_LOC: ${{ steps.detect.outputs.java_location }}
+          GO_LOC: ${{ steps.detect.outputs.go_location }}
+          NPM_LOC: ${{ steps.detect.outputs.npm_location }}
+          ANDROID_LOC: ${{ steps.detect.outputs.android_location }}
+          FLUTTER_LOC: ${{ steps.detect.outputs.flutter_location }}
+          IMAGES_JSON: ${{ steps.discover.outputs.images }}
         run: |
-          python3 -c "
-          import json
+          python3 - <<'PYEOF'
+          import json, os
+          e = os.environ
           data = {
+              'inputs_key': e['INPUTS_KEY'],
               'detect': {
-                  'has_java': '${{ steps.detect.outputs.has_java }}',
-                  'has_go': '${{ steps.detect.outputs.has_go }}',
-                  'has_npm': '${{ steps.detect.outputs.has_npm }}',
-                  'has_android': '${{ steps.detect.outputs.has_android }}',
-                  'has_flutter': '${{ steps.detect.outputs.has_flutter }}',
-                  'java_location': '${{ steps.detect.outputs.java_location }}',
-                  'go_location': '${{ steps.detect.outputs.go_location }}',
-                  'npm_location': '${{ steps.detect.outputs.npm_location }}',
-                  'android_location': '${{ steps.detect.outputs.android_location }}',
-                  'flutter_location': '${{ steps.detect.outputs.flutter_location }}',
+                  'has_java': e['HAS_JAVA'],
+                  'has_go': e['HAS_GO'],
+                  'has_npm': e['HAS_NPM'],
+                  'has_android': e['HAS_ANDROID'],
+                  'has_flutter': e['HAS_FLUTTER'],
+                  'java_location': e['JAVA_LOC'],
+                  'go_location': e['GO_LOC'],
+                  'npm_location': e['NPM_LOC'],
+                  'android_location': e['ANDROID_LOC'],
+                  'flutter_location': e['FLUTTER_LOC'],
               },
-              'images': json.loads('${{ steps.discover.outputs.images }}' or '[]'),
+              'images': json.loads(e.get('IMAGES_JSON') or '[]'),
           }
           json.dump(data, open('.pr-gate-cache.json', 'w'), indent=2)
           print('Wrote .pr-gate-cache.json')
-          "
+          PYEOF
 
       # The cache is only an optimisation (a missing cache falls back to live
       # detection), so a rejected push -- e.g. a branch-protected default branch
@@ -441,20 +517,25 @@ jobs:
 
       # ── Step C: Build Markdown comment body ──────────────────────────────
       - name: Build Trivy comment body
+        id: trivy-body
         run: |
           COMMENT_FILE="trivy-comment.md"
+          BLOCKING=false
           MODE="${{ inputs.trivy_comment_mode }}"
 
           if [ "$MODE" = "diff" ] && [ -f "trivy-base.json" ] && [ -f "trivy-head.json" ]; then
             base_ids=$(jq -r '.Results[]?.Vulnerabilities[]? | .PkgName + ":::" + .VulnerabilityID' trivy-base.json 2>/dev/null | sort -u || true)
             new_rows=""
             while IFS=$'\t' read -r pkg vuln_id severity title; do
-              if ! printf '%s\n' "$base_ids" | grep -qF "${pkg}:::${vuln_id}"; then
+              if ! printf '%s\n' "$base_ids" | grep -qxF "${pkg}:::${vuln_id}"; then
+                pkg="${pkg//|/\\|}"
+                title="${title//|/\\|}"
                 new_rows="${new_rows}| ${pkg} | ${vuln_id} | ${severity} | ${title} |\n"
               fi
             done < <(jq -r '.Results[]?.Vulnerabilities[]? | [.PkgName, .VulnerabilityID, .Severity, (.Title // "N/A")] | @tsv' trivy-head.json 2>/dev/null || true)
 
             if [ -n "$new_rows" ]; then
+              BLOCKING=true
               {
                 echo "## Trivy — New HIGH/CRITICAL Findings"
                 echo ""
@@ -469,6 +550,7 @@ jobs:
             fi
           else
             if grep -qE "^Total: [1-9]" trivy-report.txt 2>/dev/null; then
+              BLOCKING=true
               {
                 echo "## Trivy Security Scan Findings"
                 echo ""
@@ -480,6 +562,8 @@ jobs:
               : > "$COMMENT_FILE"
             fi
           fi
+
+          echo "blocking=$BLOCKING" >> "$GITHUB_OUTPUT"
 
       # ── Step D: Post sticky PR comment only when there is something to report ─
       # A clean scan posts nothing, and removes a stale comment left by an earlier push.
@@ -528,12 +612,21 @@ jobs:
       # PROTECTED_BRANCHES; the comment above still shows every finding either way.
       - name: Gate on HIGH/CRITICAL findings
         continue-on-error: ${{ needs.detect.outputs.is_protected != 'true' }}
+        env:
+          BLOCKING: ${{ steps.trivy-body.outputs.blocking }}
+          MODE: ${{ inputs.trivy_comment_mode }}
         run: |
-          if grep -qE "^Total: [1-9]" trivy-report.txt 2>/dev/null; then
-            echo "::error::HIGH or CRITICAL vulnerabilities found. Review the Trivy comment on this PR."
+          # "blocking" follows the same view as the comment: all current findings
+          # in full mode, only findings introduced by this PR in diff mode.
+          if [ "$BLOCKING" = "true" ]; then
+            if [ "$MODE" = "diff" ]; then
+              echo "::error::This PR introduces HIGH or CRITICAL vulnerabilities. See the Trivy comment on this PR."
+            else
+              echo "::error::HIGH or CRITICAL vulnerabilities found. See the Trivy comment on this PR."
+            fi
             exit 1
           fi
-          echo "No HIGH or CRITICAL findings."
+          echo "No blocking HIGH or CRITICAL findings."
 
   trivy-config:
     name: Trivy Dockerfile / IaC Scan
@@ -572,6 +665,7 @@ jobs:
           reviewdog_version: v0.21.2
 
       - name: Post inline PR comments
+        continue-on-error: true   # a failure to publish annotations is not a finding
         if: github.event_name == 'pull_request'
         env:
           REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -596,10 +690,10 @@ jobs:
       # Polyglot SAST across every stack in one job (Go, Java/Kotlin, JS/TS, etc.)
       # using Semgrep's free, public OSS rulesets — the one tool here that covers
       # all detected stacks without a per-language matrix or build step. Pinned to
-      # an exact version via pip (no first-party pinnable action exists), matching
-      # the actionlint install pattern below. Advisory only: semgrep exits 0 on
-      # findings unless --error is passed, so this never fails the PR — findings
-      # surface via the SARIF upload to the Security tab instead.
+      # an exact version via pip (no first-party pinnable action exists).
+      # Advisory only: semgrep exits 0 on findings unless --error is passed, so
+      # this never fails the PR -- findings surface as PR annotations (reviewdog)
+      # and, on push runs, in the Security tab via the SARIF upload.
       - name: Install Semgrep
         run: pip install "semgrep==1.177.0"
 
@@ -625,6 +719,7 @@ jobs:
           reviewdog_version: v0.21.2
 
       - name: Post inline PR comments
+        continue-on-error: true   # a failure to publish annotations is not a finding
         if: github.event_name == 'pull_request'
         env:
           REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -676,9 +771,15 @@ jobs:
 
       - name: Sanitize image reference for artifact/category naming
         id: safe
-        run: echo "name=$(echo '${{ matrix.image }}' | tr -c 'a-zA-Z0-9._-' '_')" >> "$GITHUB_OUTPUT"
+        env:
+          IMAGE: ${{ matrix.image }}
+        run: echo "name=$(printf '%s' "$IMAGE" | tr -c 'a-zA-Z0-9._-' '_')" >> "$GITHUB_OUTPUT"
 
+      # An image that cannot be pulled (private registry, unresolved reference) is
+      # a tooling problem, not a finding: warn and skip instead of failing the job.
       - name: Scan base image (OS packages only)
+        id: scan
+        continue-on-error: true
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
           scan-type: image
@@ -689,9 +790,15 @@ jobs:
           format: sarif
           output: trivy-image.sarif
 
+      - name: Note that the image could not be scanned
+        if: steps.scan.outcome == 'failure'
+        env:
+          IMAGE: ${{ matrix.image }}
+        run: echo "::warning title=Image not scanned::Trivy could not scan '$IMAGE' (it may be private or unreachable). See the scan step log."
+
       - name: Upload SARIF to Security tab
         uses: github/codeql-action/upload-sarif@4e828ff8d448a8a6e532957b1811f387a63867e8  # v3.29.4
-        if: always() && github.event_name != 'pull_request'
+        if: always() && github.event_name != 'pull_request' && steps.scan.outcome == 'success'
         with:
           sarif_file: trivy-image.sarif
           category: trivy-image-${{ steps.safe.outputs.name }}
@@ -699,12 +806,13 @@ jobs:
       # Each matrix instance (one per discovered base image) posts its own PR
       # comments independently -- no separate aggregation job needed.
       - uses: reviewdog/action-setup@d8a7baabd7f3e8544ee4dbde3ee41d0011c3a93f  # v1.5.0
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && steps.scan.outcome == 'success'
         with:
           reviewdog_version: v0.21.2
 
       - name: Post inline PR comments
-        if: github.event_name == 'pull_request'
+        continue-on-error: true   # a failure to publish annotations is not a finding
+        if: github.event_name == 'pull_request' && steps.scan.outcome == 'success'
         env:
           REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -804,18 +912,21 @@ jobs:
           restore-keys: ${{ runner.os }}-maven-
 
       - name: Create Maven settings
+        env:
+          OSSRH_USER: ${{ secrets.OSSRH_USER }}
+          OSSRH_SECRET: ${{ secrets.OSSRH_SECRET }}
         run: |
-          cat > $GITHUB_WORKSPACE/settings.xml <<'EOF'
-          <settings>
-            <servers>
-              <server>
-                <id>ossrh</id>
-                <username>${{ secrets.OSSRH_USER }}</username>
-                <password>${{ secrets.OSSRH_SECRET }}</password>
-              </server>
-            </servers>
-          </settings>
-          EOF
+          python3 - <<'PYEOF'
+          import os
+          from xml.sax.saxutils import escape
+          user = escape(os.environ.get("OSSRH_USER", ""))
+          secret = escape(os.environ.get("OSSRH_SECRET", ""))
+          path = os.path.join(os.environ["GITHUB_WORKSPACE"], "settings.xml")
+          with open(path, "w", encoding="utf-8") as f:
+              f.write("<settings><servers><server><id>ossrh</id>"
+                      "<username>%s</username><password>%s</password>"
+                      "</server></servers></settings>\n" % (user, secret))
+          PYEOF
 
       - name: Download find-sec-bugs plugin
         run: |
@@ -837,6 +948,8 @@ jobs:
         run: |
           echo "::warning title=SpotBugs skipped::The project could not be compiled, so SpotBugs did not run. See the Compile step log."
           printf '### SpotBugs skipped\nThe project could not be compiled, so SpotBugs did not run. See the Compile step log.\n' >> "$GITHUB_STEP_SUMMARY"
+          # Replaces any earlier SpotBugs comment so it cannot show stale findings.
+          printf '## SpotBugs + Find Security Bugs\n\n_SpotBugs was skipped for this commit because the project could not be compiled. See the Compile step in the PR Gate run._\n' > spotbugs-comment.md
 
       - name: Run SpotBugs + Find Security Bugs (non-blocking)
         id: spotbugs
@@ -844,7 +957,7 @@ jobs:
         run: |
           cd "${{ needs.detect.outputs.java_location }}"
           set +e
-          mvn -B com.github.spotbugs:spotbugs-maven-plugin:4.10.4.1:spotbugs \
+          mvn -B compile -Dgpg.skip=true com.github.spotbugs:spotbugs-maven-plugin:4.10.4.1:spotbugs \
             -Dspotbugs.pluginList="$GITHUB_WORKSPACE/findsecbugs-plugin.jar" \
             -Dspotbugs.sarifOutput=true \
             --file pom.xml -s "$GITHUB_WORKSPACE/settings.xml"
@@ -866,7 +979,11 @@ jobs:
               safe="report_$(echo "$f" | tr -c 'a-zA-Z0-9._-' '_')"
               cp "$f" "$GITHUB_WORKSPACE/spotbugs-sarif-head/${safe}.sarif"
             done
-          echo "Collected $(find "$GITHUB_WORKSPACE/spotbugs-sarif-head" -maxdepth 1 -name '*.sarif' 2>/dev/null | wc -l) head SARIF file(s)."
+          HEAD_COUNT="$(find "$GITHUB_WORKSPACE/spotbugs-sarif-head" -maxdepth 1 -name '*.sarif' 2>/dev/null | wc -l)"
+          echo "Collected $HEAD_COUNT head SARIF file(s)."
+          if [ "$HEAD_COUNT" -eq 0 ]; then
+            echo "::warning title=SpotBugs produced no report::SpotBugs ran but wrote no spotbugsSarif.json, so a clean result here does not mean the code is clean. See the Run SpotBugs step log."
+          fi
 
       - name: Upload SARIF to Security tab
         uses: github/codeql-action/upload-sarif@4e828ff8d448a8a6e532957b1811f387a63867e8  # v3.29.4
@@ -903,7 +1020,7 @@ jobs:
         run: |
           cd "spotbugs-base/${{ needs.detect.outputs.java_location }}"
           set +e
-          mvn -B com.github.spotbugs:spotbugs-maven-plugin:4.10.4.1:spotbugs \
+          mvn -B compile -Dgpg.skip=true com.github.spotbugs:spotbugs-maven-plugin:4.10.4.1:spotbugs \
             -Dspotbugs.pluginList="$GITHUB_WORKSPACE/findsecbugs-plugin.jar" \
             -Dspotbugs.sarifOutput=true \
             --file pom.xml -s "$GITHUB_WORKSPACE/settings.xml"
@@ -928,7 +1045,7 @@ jobs:
       # the match since unrelated nearby edits can shift bytecode line refs
       # slightly without the underlying finding actually being new.
       - name: Build report
-        if: always()
+        if: always() && steps.head-compile.outcome == 'success'
         run: |
           python3 - <<'PYEOF'
           import json, glob, os
@@ -1087,20 +1204,24 @@ jobs:
           restore-keys: ${{ runner.os }}-maven-
 
       - name: Create Maven settings
+        env:
+          OSSRH_USER: ${{ secrets.OSSRH_USER }}
+          OSSRH_SECRET: ${{ secrets.OSSRH_SECRET }}
         run: |
-          cat > $GITHUB_WORKSPACE/settings.xml <<'EOF'
-          <settings>
-            <servers>
-              <server>
-                <id>ossrh</id>
-                <username>${{ secrets.OSSRH_USER }}</username>
-                <password>${{ secrets.OSSRH_SECRET }}</password>
-              </server>
-            </servers>
-          </settings>
-          EOF
+          python3 - <<'PYEOF'
+          import os
+          from xml.sax.saxutils import escape
+          user = escape(os.environ.get("OSSRH_USER", ""))
+          secret = escape(os.environ.get("OSSRH_SECRET", ""))
+          path = os.path.join(os.environ["GITHUB_WORKSPACE"], "settings.xml")
+          with open(path, "w", encoding="utf-8") as f:
+              f.write("<settings><servers><server><id>ossrh</id>"
+                      "<username>%s</username><password>%s</password>"
+                      "</server></servers></settings>\n" % (user, secret))
+          PYEOF
 
       - name: Run tests and generate coverage
+        continue-on-error: ${{ needs.detect.outputs.is_protected != 'true' }}
         run: |
           cd ${{ needs.detect.outputs.java_location }}
           mvn -U -B verify -Dgpg.skip=true -Dmaven.wagon.http.retryHandler.count=2 \
@@ -1134,6 +1255,7 @@ jobs:
           cache: true
 
       - name: Run tests and generate coverage
+        continue-on-error: ${{ needs.detect.outputs.is_protected != 'true' }}
         run: |
           cd ${{ needs.detect.outputs.go_location }}
           go test -v -coverprofile=coverage.out -covermode=atomic ./...
@@ -1160,18 +1282,43 @@ jobs:
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
+      # Choose the package manager from the committed lockfile instead of
+      # assuming npm: package.json alone is what detection checks for.
+      - name: Detect package manager
+        id: pm
+        env:
+          NPM_LOC: ${{ needs.detect.outputs.npm_location }}
+        run: |
+          cd "$NPM_LOC"
+          if   [ -f package-lock.json ]; then echo "manager=npm"  >> "$GITHUB_OUTPUT"; echo "lockfile=package-lock.json" >> "$GITHUB_OUTPUT"
+          elif [ -f yarn.lock ];         then echo "manager=yarn" >> "$GITHUB_OUTPUT"; echo "lockfile=yarn.lock"         >> "$GITHUB_OUTPUT"
+          elif [ -f pnpm-lock.yaml ];    then echo "manager=pnpm" >> "$GITHUB_OUTPUT"; echo "lockfile=pnpm-lock.yaml"    >> "$GITHUB_OUTPUT"
+          else echo "manager=none" >> "$GITHUB_OUTPUT"; echo "lockfile=" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
         with:
           node-version: ${{ inputs.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: '${{ needs.detect.outputs.npm_location }}/package-lock.json'
+          cache: ${{ (steps.pm.outputs.manager == 'npm' || steps.pm.outputs.manager == 'yarn') && steps.pm.outputs.manager || '' }}
+          cache-dependency-path: ${{ needs.detect.outputs.npm_location }}/${{ steps.pm.outputs.lockfile }}
 
       - name: Install dependencies
+        continue-on-error: ${{ needs.detect.outputs.is_protected != 'true' }}
+        env:
+          NPM_LOC: ${{ needs.detect.outputs.npm_location }}
+          MANAGER: ${{ steps.pm.outputs.manager }}
         run: |
-          cd ${{ needs.detect.outputs.npm_location }}
-          npm ci
+          cd "$NPM_LOC"
+          case "$MANAGER" in
+            npm)  npm ci ;;
+            yarn) corepack enable
+                  if [ "$(yarn --version | cut -d. -f1)" -ge 2 ]; then yarn install --immutable; else yarn install --frozen-lockfile; fi ;;
+            pnpm) corepack enable && pnpm install --frozen-lockfile ;;
+            *)    npm install --no-audit --no-fund ;;
+          esac
 
       - name: Run tests and generate coverage
+        continue-on-error: ${{ needs.detect.outputs.is_protected != 'true' }}
         run: |
           cd ${{ needs.detect.outputs.npm_location }}
           ${{ inputs.NPM_COVERAGE_COMMAND }}
@@ -1204,6 +1351,7 @@ jobs:
           java-version: ${{ inputs.JAVA_VERSION }}
 
       - name: Run Android unit tests with coverage
+        continue-on-error: ${{ needs.detect.outputs.is_protected != 'true' }}
         run: |
           cd ${{ needs.detect.outputs.android_location }}
           ./gradlew testDebugUnitTest jacocoTestReport
@@ -1237,11 +1385,13 @@ jobs:
           cache: true
 
       - name: Install dependencies
+        continue-on-error: ${{ needs.detect.outputs.is_protected != 'true' }}
         run: |
           cd ${{ needs.detect.outputs.flutter_location }}
           flutter pub get
 
       - name: Run tests and generate coverage
+        continue-on-error: ${{ needs.detect.outputs.is_protected != 'true' }}
         run: |
           cd ${{ needs.detect.outputs.flutter_location }}
           flutter test --coverage
@@ -1289,18 +1439,21 @@ jobs:
           restore-keys: ${{ runner.os }}-maven-
 
       - name: Create Maven settings
+        env:
+          OSSRH_USER: ${{ secrets.OSSRH_USER }}
+          OSSRH_SECRET: ${{ secrets.OSSRH_SECRET }}
         run: |
-          cat > $GITHUB_WORKSPACE/settings.xml <<'EOF'
-          <settings>
-            <servers>
-              <server>
-                <id>ossrh</id>
-                <username>${{ secrets.OSSRH_USER }}</username>
-                <password>${{ secrets.OSSRH_SECRET }}</password>
-              </server>
-            </servers>
-          </settings>
-          EOF
+          python3 - <<'PYEOF'
+          import os
+          from xml.sax.saxutils import escape
+          user = escape(os.environ.get("OSSRH_USER", ""))
+          secret = escape(os.environ.get("OSSRH_SECRET", ""))
+          path = os.path.join(os.environ["GITHUB_WORKSPACE"], "settings.xml")
+          with open(path, "w", encoding="utf-8") as f:
+              f.write("<settings><servers><server><id>ossrh</id>"
+                      "<username>%s</username><password>%s</password>"
+                      "</server></servers></settings>\n" % (user, secret))
+          PYEOF
 
       # pgpverify:check verifies PGP signatures of all resolved dependencies.
       # Plugin version is pinned (supply-chain: never LATEST/RELEASE). The result

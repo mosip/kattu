@@ -68,7 +68,9 @@ root and runs only those jobs.
 The cache is an optimisation only: if it is missing, or the bot cannot push it (for example a
 branch-protected default branch), PRs simply detect stacks live. A PR whose own diff touches a stack
 marker file (`pom.xml`, `go.mod`, `package.json`, `settings.gradle*`, `pubspec.yaml`, a
-`Dockerfile*`) always detects live, so a new stack is scanned immediately.
+`Dockerfile` or `Dockerfile.*`) always detects live, so a new stack is scanned immediately. The
+cache also records the `*_SERVICE_LOCATION` inputs it was built with; a PR whose caller passes
+different inputs ignores the cache.
 
 ---
 
@@ -88,7 +90,7 @@ All inputs are **optional** — sensible defaults are applied. Set only what you
 | `NODE_VERSION` | string | `'20'` | Node.js version for the npm coverage job. |
 | `FLUTTER_VERSION` | string | `''` (latest stable) | Flutter SDK version; empty = latest of the `stable` channel. |
 | `SCAN_SEVERITY` | string | `'HIGH,CRITICAL'` | Trivy severities that are reported and gated on. |
-| `trivy_comment_mode` | string | `'full'` | `full` = comment all current HIGH/CRITICAL; `diff` = comment only findings **newly introduced** by the PR. (The Trivy filesystem **gate** still fails on any current HIGH/CRITICAL in both modes — mode only affects the comment.) |
+| `trivy_comment_mode` | string | `'full'` | `full` = comment on, and gate on, all current HIGH/CRITICAL; `diff` = comment on, and gate on, only findings **newly introduced** by the PR (existing findings neither appear nor block). |
 | `NPM_COVERAGE_COMMAND` | string | `'npm test -- --coverage'` | Command that runs tests and emits coverage. Override for non-Jest runners, e.g. `npx vitest run --coverage`. |
 | `SPOTBUGS_COMMENT_MODE` | string | `'diff'` | `diff` = the SpotBugs comment lists only findings newly introduced vs the PR's base; `full` = every current finding on every PR. |
 | `PROTECTED_BRANCHES` | string | `'master,main,develop,release-*'` | Comma-separated glob patterns of PR **base** branches that enforce blocking. See §3. |
@@ -127,7 +129,7 @@ Every job runs and reports on every PR. Whether a failure can **fail the PR** de
 | `dependency-review` | Yes | GitHub's dependency-review summary comment, only on failure. |
 | `lint-workflows` (actionlint) | Yes | Inline review comments. |
 | `trivy-fs` | Yes (HIGH/CRITICAL) | Sticky PR comment. |
-| `coverage-*` (Codecov upload) | Yes (upload errors) | Codecov's own status checks. |
+| `coverage-*` (tests, then Codecov upload) | Yes (failing tests, install errors, upload errors) | Codecov's own status checks. |
 | `trivy-config`, `semgrep`, `trivy-image-scan` | No | reviewdog check-run annotations. |
 | `spotbugs-security` | No | Sticky PR comment with a "how to fix" link per finding. |
 | `verify-maven-signatures` | No | Sticky PR comment. |
@@ -197,7 +199,8 @@ These are things the **calling workflow / caller repo** must provide — the gat
       `OSSRH_USER` / `OSSRH_SECRET`) available as org/repo secrets.
 - [ ] **Declare each stack's location** via the matching `*_SERVICE_LOCATION` input (see §2).
 - [ ] **Do not reuse the gate's concurrency group.** The gate cancels a PR's superseded run using the
-      group `pr-gate-<PR number>`; don't define the same group on your caller.
+      group `pr-gate-<caller workflow name>-<PR number>`; don't define the same group on your caller.
+      Push runs get a unique group, so they are never cancelled or dropped.
 - [ ] **Satisfy the per-stack project prerequisites** below.
 
 ---
@@ -217,8 +220,12 @@ These are things the **calling workflow / caller repo** must provide — the gat
   are ignored on purpose — so only newly introduced findings are listed; the count of pre-existing
   findings is stated in the comment.
 - If the **base** branch cannot be built, the comment lists all findings and says so. If the **PR
-  head** cannot be compiled, the scan is skipped with a warning in the job log and summary (no PR
-  comment) — it never fails the PR for a build problem.
+  head** cannot be compiled, the scan is skipped: a one-line "SpotBugs was skipped" note replaces
+  any earlier SpotBugs comment (so it cannot show stale findings), plus a warning in the job log
+  and summary. It never fails the PR for a build problem.
+- SpotBugs runs in the same Maven invocation as `compile`, so sibling modules of a multi-module
+  project resolve from the build. If it finishes without writing a report, the job logs a warning
+  so a missing report is not mistaken for a clean result.
 - Non-blocking, always.
 
 ### Maven signature check (`verify-maven-signatures` / pgpverify)
@@ -232,7 +239,9 @@ These are things the **calling workflow / caller repo** must provide — the gat
 - The job runs `go test -coverprofile=coverage.out -covermode=atomic ./...`.
 
 ### npm (`coverage-npm`)
-- `package.json` **and** `package-lock.json` at the npm location (the lockfile is used for caching).
+- `package.json` at the npm location. The package manager is chosen from the committed lockfile:
+  `package-lock.json` -> `npm ci`, `yarn.lock` -> `yarn install` (frozen), `pnpm-lock.yaml` ->
+  `pnpm install --frozen-lockfile`, none -> `npm install`. Dependency caching is used for npm and yarn.
 - Your `NPM_COVERAGE_COMMAND` must emit **`coverage/lcov.info`**.
   - Jest: the default `npm test -- --coverage` works if `lcov` is in `coverageReporters`.
   - **Vitest:** set `NPM_COVERAGE_COMMAND: 'npx vitest run --coverage'` **and** install
@@ -249,8 +258,15 @@ These are things the **calling workflow / caller repo** must provide — the gat
 - Optionally pin the SDK via `FLUTTER_VERSION`.
 
 ### Container images (`trivy-image-scan`, `trivy-config`)
-- Runs when a `Dockerfile*` is present. Every `FROM` image (multi-stage aliases are resolved) is
-  scanned for **OS-package** vulnerabilities; application dependencies are covered by `trivy-fs`.
+- Runs when a `Dockerfile*` is present. Every `FROM` image is scanned for **OS-package**
+  vulnerabilities; application dependencies are covered by `trivy-fs`.
+- `FROM` lines are parsed conservatively: flags such as `--platform=...` are ignored, build-stage
+  aliases and `scratch` are skipped, and `ARG` defaults declared before the first `FROM` are
+  substituted. A reference that stays unresolved (for example `FROM ${BASE}` with no default) is
+  skipped, and any value containing characters that are not valid in an image reference is
+  discarded — image names come from the repository's files and are never executed.
+- An image that cannot be pulled (for example a private registry) produces a warning and is
+  skipped; it does not fail the job.
 - At most 3 images are scanned in parallel.
 
 ---

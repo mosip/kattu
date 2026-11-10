@@ -45,7 +45,7 @@ on:
 permissions:
   contents: write              # detect job commits a stack-detection cache on push
   pull-requests: write         # PR comments and inline review comments
-  security-events: write       # SARIF uploads to the Security tab (push runs only)
+  security-events: write       # SARIF uploads to the Security tab (non-PR runs only)
   checks: write                # reviewdog check-run annotations
 
 jobs:
@@ -62,15 +62,18 @@ root and runs only those jobs.
 | Trigger | Required? | Effect |
 |---|---|---|
 | `pull_request` | **Yes** | Runs every scan and posts findings on the PR. |
-| `push` to the default branch | Optional, recommended | Uploads SARIF to the Security tab (the **only** event that does) and refreshes the stack-detection cache `.pr-gate-cache.json`. |
-| `workflow_dispatch` (via a small caller stub) | Optional | Full-backlog SpotBugs scan; the report is uploaded as a workflow artifact. |
+| `push` to the default branch | Optional, recommended | Uploads SARIF to the Security tab and refreshes the stack-detection cache `.pr-gate-cache.json`. |
+| `workflow_dispatch` (via a small caller stub) | Optional | Full-backlog run: SARIF is uploaded to the Security tab like a push run, and the SpotBugs report is also uploaded as a workflow artifact. |
 
 The cache is an optimisation only: if it is missing, or the bot cannot push it (for example a
 branch-protected default branch), PRs simply detect stacks live. A PR whose own diff touches a stack
 marker file (`pom.xml`, `go.mod`, `package.json`, `settings.gradle*`, `pubspec.yaml`, a
 `Dockerfile` or `Dockerfile.*`) always detects live, so a new stack is scanned immediately. The
-cache also records the `*_SERVICE_LOCATION` inputs it was built with; a PR whose caller passes
-different inputs ignores the cache.
+cache also records the `*_SERVICE_LOCATION` inputs it was built with and the commit it was
+built from. A PR ignores the cache if its caller passes different inputs, if the cache's source
+commit is missing (for example a cache written by an older version of the gate), or if any marker
+file changed between that commit and the PR — which also covers a stale cache left behind when the
+bot's cache commit was rejected.
 
 ---
 
@@ -90,7 +93,7 @@ All inputs are **optional** — sensible defaults are applied. Set only what you
 | `NODE_VERSION` | string | `'20'` | Node.js version for the npm coverage job. |
 | `FLUTTER_VERSION` | string | `''` (latest stable) | Flutter SDK version; empty = latest of the `stable` channel. |
 | `SCAN_SEVERITY` | string | `'HIGH,CRITICAL'` | Trivy severities that are reported and gated on. |
-| `trivy_comment_mode` | string | `'full'` | `full` = comment on, and gate on, all current HIGH/CRITICAL; `diff` = comment on, and gate on, only findings **newly introduced** by the PR (existing findings neither appear nor block). |
+| `trivy_comment_mode` | string | `'full'` | `full` = comment on, and gate on, all current HIGH/CRITICAL; `diff` = comment on, and gate on, only findings **newly introduced** by the PR (existing findings neither appear nor block). A finding counts as the same only if package, CVE, target file and installed version all match. |
 | `NPM_COVERAGE_COMMAND` | string | `'npm test -- --coverage'` | Command that runs tests and emits coverage. Override for non-Jest runners, e.g. `npx vitest run --coverage`. |
 | `SPOTBUGS_COMMENT_MODE` | string | `'diff'` | `diff` = the SpotBugs comment lists only findings newly introduced vs the PR's base; `full` = every current finding on every PR. |
 | `PROTECTED_BRANCHES` | string | `'master,main,develop,release-*'` | Comma-separated glob patterns of PR **base** branches that enforce blocking. See §3. |
@@ -150,7 +153,7 @@ A check with nothing to report posts nothing. The Trivy, SpotBugs and pgpverify 
 ### Security tab
 
 SARIF is uploaded to the repository Security tab **only on events other than `pull_request`**
-(i.e. after a merge/push, or a manual run). Findings on an open PR never create Security-tab
+(that is, on `push` and `workflow_dispatch` runs). Findings on an open PR never create Security-tab
 entries; they exist only as PR comments/annotations.
 
 ### Known limitation: separate reviewdog check entries
@@ -187,7 +190,7 @@ These are things the **calling workflow / caller repo** must provide — the gat
       permissions:
         contents: write          # detect job commits the stack-detection cache on push
         pull-requests: write     # PR comments / inline review comments
-        security-events: write   # SARIF upload to the Security tab (push runs)
+        security-events: write   # SARIF upload to the Security tab (non-PR runs)
         checks: write            # reviewdog check-run annotations
       ```
       Omitting any of them makes the run fail at startup with "the nested job … is requesting
@@ -216,10 +219,14 @@ These are things the **calling workflow / caller repo** must provide — the gat
 ### SpotBugs + Find Security Bugs (`spotbugs-security`)
 - Needs no `pom.xml` changes: the plugin is invoked ad hoc and analyses compiled bytecode, so the
   project must compile (`mvn compile`).
-- In `diff` mode on a PR, findings are matched against the PR's base by (rule, file) — line numbers
-  are ignored on purpose — so only newly introduced findings are listed; the count of pre-existing
-  findings is stated in the comment.
-- If the **base** branch cannot be built, the comment lists all findings and says so. If the **PR
+- In `diff` mode on a PR, findings are compared with the PR's base per (rule, file) by **count**:
+  occurrences up to the base's count are treated as pre-existing, any beyond that are listed as new.
+  Line numbers are ignored on purpose. Known gap: a PR that removes one occurrence of a rule in a
+  file and adds another in the same file looks unchanged. The count of pre-existing findings is
+  stated in the comment.
+- If SpotBugs itself exits with an error, the comment says so and that the result is not a clean
+  one, instead of staying silent.
+- If the **base** branch cannot be built or scanned, the comment lists all findings and says so. If the **PR
   head** cannot be compiled, the scan is skipped: a one-line "SpotBugs was skipped" note replaces
   any earlier SpotBugs comment (so it cannot show stale findings), plus a warning in the job log
   and summary. It never fails the PR for a build problem.
@@ -281,8 +288,10 @@ On pull requests from forks the `GITHUB_TOKEN` is read-only, so the **Trivy**, *
 
 ## 8. Resource usage
 
-A single gate run is up to 13 jobs; at most about 12 run at the same time. A new push to a PR
-cancels that PR's still-running gate. Because GitHub's concurrent-job limit is shared across an
+A gate run is 15 jobs when every stack is present, plus one `trivy-image-scan` job per distinct
+base image; the number of images is not capped, only how many scan at once (3). `trivy-config` and
+`semgrep` start immediately; the other jobs wait for `detect`. On a Java repository the sandbox runs
+peaked at about 12 jobs at the same time. A new push to a PR cancels that PR's still-running gate. Because GitHub's concurrent-job limit is shared across an
 organization's repositories, many PRs raised at once can queue behind each other — keep this in
 mind before enabling the gate on every repository at once.
 

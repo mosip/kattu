@@ -159,11 +159,13 @@ jobs:
       # that introduces a new stack must still be scanned for it immediately,
       # not only after it merges and the cache next updates.
       # The cache is used only when (a) it records the same location inputs the
-      # caller passes now, (b) the base..head diff could be computed, and (c) the
-      # diff touches no marker file. The marker pattern matches the discovery rule
-      # below (Dockerfile or Dockerfile.<anything>). The checkout above is a full
-      # clone, so no depth-limited fetch is done here: that could make the repo
-      # shallow and lose the merge-base.
+      # caller passes now, (b) the commit it was built from is present in this
+      # clone and the diff from that commit to this PR's merge commit could be
+      # computed, and (c) that diff touches no marker file. Diffing from the
+      # cache's own source commit (not just base..head) also catches a stale
+      # cache left behind when a cache commit was rejected. The marker pattern
+      # matches the discovery rule below (Dockerfile or Dockerfile.<anything>).
+      # The checkout above is a full clone, so no depth-limited fetch is done.
       - name: Decide whether to use the cached detection
         id: mode
         env:
@@ -175,10 +177,13 @@ jobs:
           if [ "$EVENT_NAME" = "pull_request" ]; then
             git fetch origin "$BASE_REF" 2>/dev/null || true
             if git show "origin/$BASE_REF:.pr-gate-cache.json" > /tmp/pr-gate-cache.json 2>/dev/null \
-               && [ "$(jq -r '.inputs_key // ""' /tmp/pr-gate-cache.json)" = "$INPUTS_KEY" ] \
-               && CHANGED="$(git diff --name-only "origin/$BASE_REF"...HEAD 2>/dev/null)"; then
-              if ! echo "$CHANGED" | grep -qE '(^|/)(pom\.xml|go\.mod|package\.json|settings\.gradle(\.kts)?|pubspec\.yaml|Dockerfile(\.[^/]*)?)$'; then
-                USE_CACHE=true
+               && [ "$(jq -r '.inputs_key // ""' /tmp/pr-gate-cache.json)" = "$INPUTS_KEY" ]; then
+              SRC="$(jq -r '.source_sha // ""' /tmp/pr-gate-cache.json)"
+              if [ -n "$SRC" ] && git cat-file -e "${SRC}^{commit}" 2>/dev/null \
+                 && CHANGED="$(git diff --name-only "$SRC" HEAD 2>/dev/null)"; then
+                if ! echo "$CHANGED" | grep -qE '(^|/)(pom\.xml|go\.mod|package\.json|settings\.gradle(\.kts)?|pubspec\.yaml|Dockerfile(\.[^/]*)?)$'; then
+                  USE_CACHE=true
+                fi
               fi
             fi
           fi
@@ -332,6 +337,7 @@ jobs:
       - name: Write stack-detection cache
         if: github.event_name == 'push'
         env:
+          SOURCE_SHA: ${{ github.sha }}
           INPUTS_KEY: ${{ inputs.SERVICE_LOCATION }}|${{ inputs.JAVA_SERVICE_LOCATION }}|${{ inputs.GO_SERVICE_LOCATION }}|${{ inputs.NPM_SERVICE_LOCATION }}|${{ inputs.ANDROID_SERVICE_LOCATION }}|${{ inputs.FLUTTER_SERVICE_LOCATION }}
           HAS_JAVA: ${{ steps.detect.outputs.has_java }}
           HAS_GO: ${{ steps.detect.outputs.has_go }}
@@ -349,6 +355,7 @@ jobs:
           import json, os
           e = os.environ
           data = {
+              'source_sha': e['SOURCE_SHA'],
               'inputs_key': e['INPUTS_KEY'],
               'detect': {
                   'has_java': e['HAS_JAVA'],
@@ -385,6 +392,7 @@ jobs:
   secret-scan:
     name: Secret Scan
     needs: detect
+    if: ${{ !cancelled() }}   # keep scanning (and keep is_protected) even if detect failed
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -419,6 +427,7 @@ jobs:
   dependency-review:
     name: Dependency CVE Review
     needs: detect
+    if: ${{ !cancelled() }}   # keep scanning (and keep is_protected) even if detect failed
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -439,6 +448,7 @@ jobs:
   lint-workflows:
     name: Lint GitHub Actions Workflows
     needs: detect
+    if: ${{ !cancelled() }}   # keep scanning (and keep is_protected) even if detect failed
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -462,6 +472,7 @@ jobs:
   trivy-fs:
     name: Trivy Filesystem Vulnerability Scan
     needs: detect
+    if: ${{ !cancelled() }}   # keep scanning (and keep is_protected) even if detect failed
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -518,21 +529,26 @@ jobs:
       # ── Step C: Build Markdown comment body ──────────────────────────────
       - name: Build Trivy comment body
         id: trivy-body
+        env:
+          MODE: ${{ inputs.trivy_comment_mode }}
         run: |
           COMMENT_FILE="trivy-comment.md"
           BLOCKING=false
-          MODE="${{ inputs.trivy_comment_mode }}"
 
           if [ "$MODE" = "diff" ] && [ -f "trivy-base.json" ] && [ -f "trivy-head.json" ]; then
-            base_ids=$(jq -r '.Results[]?.Vulnerabilities[]? | .PkgName + ":::" + .VulnerabilityID' trivy-base.json 2>/dev/null | sort -u || true)
+            # A finding is "the same" only if package, CVE, target file and installed
+            # version all match, so a new manifest or a version bump of an
+            # already-flagged package/CVE pair is still reported as new.
+            base_ids=$(jq -r '.Results[]? | .Target as $t | .Vulnerabilities[]? | [.PkgName, .VulnerabilityID, $t, (.InstalledVersion // "-")] | join(":::")' trivy-base.json 2>/dev/null | sort -u || true)
             new_rows=""
-            while IFS=$'\t' read -r pkg vuln_id severity title; do
-              if ! printf '%s\n' "$base_ids" | grep -qxF "${pkg}:::${vuln_id}"; then
+            while IFS=$'\t' read -r pkg vuln_id severity target version title; do
+              if ! printf '%s\n' "$base_ids" | grep -qxF "${pkg}:::${vuln_id}:::${target}:::${version}"; then
                 pkg="${pkg//|/\\|}"
+                target="${target//|/\\|}"
                 title="${title//|/\\|}"
-                new_rows="${new_rows}| ${pkg} | ${vuln_id} | ${severity} | ${title} |\n"
+                new_rows="${new_rows}| ${pkg} | ${version} | ${vuln_id} | ${severity} | ${target} | ${title} |\n"
               fi
-            done < <(jq -r '.Results[]?.Vulnerabilities[]? | [.PkgName, .VulnerabilityID, .Severity, (.Title // "N/A")] | @tsv' trivy-head.json 2>/dev/null || true)
+            done < <(jq -r '.Results[]? | .Target as $t | .Vulnerabilities[]? | [.PkgName, .VulnerabilityID, .Severity, $t, (.InstalledVersion // "-"), (.Title // "N/A")] | @tsv' trivy-head.json 2>/dev/null || true)
 
             if [ -n "$new_rows" ]; then
               BLOCKING=true
@@ -541,8 +557,8 @@ jobs:
                 echo ""
                 echo "These vulnerabilities were **introduced by this PR**:"
                 echo ""
-                echo "| Package | CVE | Severity | Title |"
-                echo "|---|---|---|---|"
+                echo "| Package | Version | CVE | Severity | Target | Title |"
+                echo "|---|---|---|---|---|---|"
                 printf '%b' "$new_rows"
               } > "$COMMENT_FILE"
             else
@@ -1016,6 +1032,8 @@ jobs:
             --file pom.xml -s "$GITHUB_WORKSPACE/settings.xml"
 
       - name: Run SpotBugs + Find Security Bugs (base ref, for diffing)
+        id: base-scan
+        continue-on-error: true
         if: inputs.SPOTBUGS_COMMENT_MODE == 'diff' && github.event_name == 'pull_request' && steps.base-compile.outcome == 'success'
         run: |
           cd "spotbugs-base/${{ needs.detect.outputs.java_location }}"
@@ -1024,7 +1042,9 @@ jobs:
             -Dspotbugs.pluginList="$GITHUB_WORKSPACE/findsecbugs-plugin.jar" \
             -Dspotbugs.sarifOutput=true \
             --file pom.xml -s "$GITHUB_WORKSPACE/settings.xml"
+          rc=$?
           set -e
+          exit "$rc"
 
       - name: Collect base SARIF reports
         if: inputs.SPOTBUGS_COMMENT_MODE == 'diff' && github.event_name == 'pull_request' && steps.base-compile.outcome == 'success'
@@ -1039,16 +1059,17 @@ jobs:
 
       # Builds a per-finding table with a direct link to find-sec-bugs' own
       # pattern-detail page (bugs.htm#<RULE_ID>) so every row has concrete fix
-      # guidance, not just a bare pattern name. In diff mode on a PR, a
-      # finding is considered "new" if its (rule ID, file path) pair is absent
-      # from the base ref's scan -- line number is deliberately excluded from
-      # the match since unrelated nearby edits can shift bytecode line refs
-      # slightly without the underlying finding actually being new.
+      # guidance, not just a bare pattern name. In diff mode on a PR, findings are
+      # compared per (rule ID, file path) by count: occurrences up to the base
+      # ref's count are pre-existing, any beyond that are new. Line number is
+      # deliberately excluded since unrelated nearby edits can shift bytecode
+      # line refs. Known gap: a PR that removes one occurrence of a rule in a
+      # file and adds another in the same file looks unchanged.
       - name: Build report
         if: always() && steps.head-compile.outcome == 'success'
         run: |
           python3 - <<'PYEOF'
-          import json, glob, os
+          import json, glob, os, collections
 
           def load_findings(sarif_dir):
               findings = []
@@ -1087,11 +1108,22 @@ jobs:
           base_ok = os.environ.get("BASE_BUILD_OK") == "true"
           diff_active = (mode == "diff" and event_name == "pull_request" and base_ok)
           base_failed = (mode == "diff" and event_name == "pull_request" and not base_ok)
+          head_exit = os.environ.get("HEAD_EXIT_CODE") or "0"
+          head_failed = head_exit != "0"
 
           if diff_active:
               base_findings = load_findings(os.path.join(workspace, "spotbugs-sarif-base"))
-              base_keys = {(f["rule_id"], f["uri"]) for f in base_findings}
-              shown = [f for f in head_findings if (f["rule_id"], f["uri"]) not in base_keys]
+              # Count per (rule, file): the first N head occurrences are the N that
+              # already existed in the base; any beyond that are new.
+              base_counts = collections.Counter((f["rule_id"], f["uri"]) for f in base_findings)
+              seen = collections.Counter()
+              shown = []
+              for f in head_findings:
+                  key = (f["rule_id"], f["uri"])
+                  if seen[key] < base_counts[key]:
+                      seen[key] += 1
+                  else:
+                      shown.append(f)
               pre_existing_count = len(head_findings) - len(shown)
           else:
               shown = head_findings
@@ -1100,7 +1132,13 @@ jobs:
           out = os.path.join(workspace, "spotbugs-comment.md")
           with open(out, "w", encoding="utf-8") as f:
               f.write("## SpotBugs + Find Security Bugs\n\n")
-              if diff_active:
+              if head_failed:
+                  f.write(
+                      "> **SpotBugs exited with code %s**, so the results below may be incomplete. "
+                      "This is not a clean result. See the Run SpotBugs step in the PR Gate run.\n\n"
+                      % head_exit
+                  )
+              if diff_active and not head_failed:
                   f.write(
                       "_Showing findings newly introduced by this PR only. %d pre-existing "
                       "finding(s) also exist in the codebase (not shown here -- run this "
@@ -1109,7 +1147,7 @@ jobs:
                   )
               if base_failed:
                   f.write(
-                      "_The PR's base ref could not be built, so this lists ALL findings "
+                      "_The PR's base ref could not be built or scanned, so this lists ALL findings "
                       "(including pre-existing ones) rather than only newly introduced ones._\n\n"
                   )
               if shown:
@@ -1130,7 +1168,7 @@ jobs:
                       "\n<sub>Full SARIF detail is also available under the repo's Security tab "
                       "(category `spotbugs-findsecbugs`).</sub>\n"
                   )
-          if not shown:
+          if not shown and not head_failed:
               open(out, "w").close()
           print(
               "Wrote report with %d finding(s) (mode=%s, diff_active=%s)."
@@ -1139,7 +1177,8 @@ jobs:
           PYEOF
         env:
           SPOTBUGS_COMMENT_MODE: ${{ inputs.SPOTBUGS_COMMENT_MODE }}
-          BASE_BUILD_OK: ${{ steps.base-compile.outcome == 'success' }}
+          BASE_BUILD_OK: ${{ steps.base-compile.outcome == 'success' && steps.base-scan.outcome == 'success' }}
+          HEAD_EXIT_CODE: ${{ steps.spotbugs.outputs.exit_code }}
 
       - name: Check whether SpotBugs has anything to report
         id: sb-has-findings
@@ -1155,7 +1194,7 @@ jobs:
           path: spotbugs-comment.md
 
       - name: Remove stale SpotBugs comment (now clean)
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name && steps.sb-has-findings.outputs.value != 'true'
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name && steps.sb-has-findings.outputs.value != 'true' && steps.head-compile.outcome == 'success'
         uses: marocchino/sticky-pull-request-comment@0ea0beb66eb9baf113663a64ec522f60e49231c0  # v3.0.4
         with:
           header: spotbugs
@@ -1492,8 +1531,13 @@ jobs:
             {
               echo "## 🔐 pgpverify — Maven Dependency Signature Check"
               echo ""
-              echo "> ⚠️ **Warning — signature problems found (exit code \`$CODE\`).**"
-              echo "> This check is **non-blocking**: it will **not** fail the PR, but the items below are supply-chain risks worth reviewing."
+              if [ -n "$problems" ]; then
+                echo "> ⚠️ **Warning — signature problems found (exit code \`$CODE\`).**"
+                echo "> This check is **non-blocking**: it will **not** fail the PR, but the items below are supply-chain risks worth reviewing."
+              else
+                echo "> ℹ️ **pgpverify exited with code \`$CODE\` but no signature-specific problems were found in its output.** This is more likely a build or download problem than a signature problem."
+                echo "> This check is **non-blocking** and will not fail the PR."
+              fi
               echo ""
               if [ -n "$problems" ]; then
                 echo "### 🚩 Warning signs"

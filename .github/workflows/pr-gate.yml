@@ -76,6 +76,8 @@ on:
         type: string
         default: 'master,main,develop,release-*'
     secrets:
+      # OSSRH_* and GITLEAKS_LICENSE are no longer used by any job. They stay declared
+      # only so a caller that still passes them does not fail with "secret not defined".
       OSSRH_USER:
         required: false
       OSSRH_SECRET:
@@ -969,22 +971,9 @@ jobs:
           key: ${{ runner.os }}-maven-spotbugs-${{ hashFiles('**/pom.xml') }}
           restore-keys: ${{ runner.os }}-maven-
 
-      - name: Create Maven settings
-        env:
-          OSSRH_USER: ${{ secrets.OSSRH_USER }}
-          OSSRH_SECRET: ${{ secrets.OSSRH_SECRET }}
-        run: |
-          python3 - <<'PYEOF'
-          import os
-          from xml.sax.saxutils import escape
-          user = escape(os.environ.get("OSSRH_USER", ""))
-          secret = escape(os.environ.get("OSSRH_SECRET", ""))
-          path = os.path.join(os.environ["GITHUB_WORKSPACE"], "settings.xml")
-          with open(path, "w", encoding="utf-8") as f:
-              f.write("<settings><servers><server><id>ossrh</id>"
-                      "<username>%s</username><password>%s</password>"
-                      "</server></servers></settings>\n" % (user, secret))
-          PYEOF
+      # No OSSRH credentials here: this job only resolves dependencies and plugins
+      # (MOSIP's snapshot repository is readable anonymously), and it runs Maven on
+      # the PR's own pom.xml, so it must not be handed publishing credentials.
 
       - name: Download find-sec-bugs plugin
         run: |
@@ -1001,7 +990,7 @@ jobs:
         run: |
           cd "$LOC"
           mvn -U -B compile -Dgpg.skip=true -Dmaven.wagon.http.retryHandler.count=2 \
-            --file pom.xml -s "$GITHUB_WORKSPACE/settings.xml"
+            --file pom.xml
 
       - name: Note that SpotBugs was skipped
         if: steps.head-compile.outcome == 'failure'
@@ -1022,7 +1011,7 @@ jobs:
           mvn -B compile -Dgpg.skip=true com.github.spotbugs:spotbugs-maven-plugin:4.10.4.1:spotbugs \
             -Dspotbugs.pluginList="$GITHUB_WORKSPACE/findsecbugs-plugin.jar" \
             -Dspotbugs.sarifOutput=true \
-            --file pom.xml -s "$GITHUB_WORKSPACE/settings.xml"
+            --file pom.xml
           code=$?
           set -e
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
@@ -1079,7 +1068,7 @@ jobs:
         run: |
           cd "spotbugs-base/$LOC"
           mvn -U -B compile -Dgpg.skip=true -Dmaven.wagon.http.retryHandler.count=2 \
-            --file pom.xml -s "$GITHUB_WORKSPACE/settings.xml"
+            --file pom.xml
 
       - name: Run SpotBugs + Find Security Bugs (base ref, for diffing)
         id: base-scan
@@ -1093,7 +1082,7 @@ jobs:
           mvn -B compile -Dgpg.skip=true com.github.spotbugs:spotbugs-maven-plugin:4.10.4.1:spotbugs \
             -Dspotbugs.pluginList="$GITHUB_WORKSPACE/findsecbugs-plugin.jar" \
             -Dspotbugs.sarifOutput=true \
-            --file pom.xml -s "$GITHUB_WORKSPACE/settings.xml"
+            --file pom.xml
           rc=$?
           set -e
           exit "$rc"
@@ -1296,22 +1285,9 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: ${{ runner.os }}-maven-
 
-      - name: Create Maven settings
-        env:
-          OSSRH_USER: ${{ secrets.OSSRH_USER }}
-          OSSRH_SECRET: ${{ secrets.OSSRH_SECRET }}
-        run: |
-          python3 - <<'PYEOF'
-          import os
-          from xml.sax.saxutils import escape
-          user = escape(os.environ.get("OSSRH_USER", ""))
-          secret = escape(os.environ.get("OSSRH_SECRET", ""))
-          path = os.path.join(os.environ["GITHUB_WORKSPACE"], "settings.xml")
-          with open(path, "w", encoding="utf-8") as f:
-              f.write("<settings><servers><server><id>ossrh</id>"
-                      "<username>%s</username><password>%s</password>"
-                      "</server></servers></settings>\n" % (user, secret))
-          PYEOF
+      # No OSSRH credentials here: `mvn verify` stops before the deploy phase, which is
+      # the only place the ossrh publishing server is used, and this step runs Maven on
+      # the PR's own pom.xml, so it must not be handed publishing credentials.
 
       - name: Run tests and generate coverage
         continue-on-error: ${{ needs.detect.outputs.is_protected == 'false' }}
@@ -1320,7 +1296,7 @@ jobs:
         run: |
           cd "$LOC"
           mvn -U -B verify -Dgpg.skip=true -Dmaven.wagon.http.retryHandler.count=2 \
-            --file pom.xml -s $GITHUB_WORKSPACE/settings.xml
+            --file pom.xml
 
       - name: Upload to Codecov
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f  # v7.0.0
@@ -1544,22 +1520,9 @@ jobs:
           key: ${{ runner.os }}-maven-pgpverify-${{ hashFiles('**/pom.xml') }}
           restore-keys: ${{ runner.os }}-maven-
 
-      - name: Create Maven settings
-        env:
-          OSSRH_USER: ${{ secrets.OSSRH_USER }}
-          OSSRH_SECRET: ${{ secrets.OSSRH_SECRET }}
-        run: |
-          python3 - <<'PYEOF'
-          import os
-          from xml.sax.saxutils import escape
-          user = escape(os.environ.get("OSSRH_USER", ""))
-          secret = escape(os.environ.get("OSSRH_SECRET", ""))
-          path = os.path.join(os.environ["GITHUB_WORKSPACE"], "settings.xml")
-          with open(path, "w", encoding="utf-8") as f:
-              f.write("<settings><servers><server><id>ossrh</id>"
-                      "<username>%s</username><password>%s</password>"
-                      "</server></servers></settings>\n" % (user, secret))
-          PYEOF
+      # No OSSRH credentials here: this job only resolves dependencies and plugins
+      # (MOSIP's snapshot repository is readable anonymously), and it runs Maven on
+      # the PR's own pom.xml, so it must not be handed publishing credentials.
 
       # pgpverify:check verifies PGP signatures of all resolved dependencies.
       # Plugin version is pinned (supply-chain: never LATEST/RELEASE). The result
@@ -1574,7 +1537,7 @@ jobs:
           set +e
           mvn -B -U \
             org.simplify4u.plugins:pgpverify-maven-plugin:1.19.1:check \
-            --file pom.xml -s "$GITHUB_WORKSPACE/settings.xml" \
+            --file pom.xml \
             2>&1 | tee "$GITHUB_WORKSPACE/pgpverify.log"
           code=${PIPESTATUS[0]}
           set -e

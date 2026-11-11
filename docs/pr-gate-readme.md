@@ -178,16 +178,17 @@ All secrets are declared `required: false`. In a `workflow_call`, secrets do **n
 automatically. **Map each one explicitly** under `secrets:` rather than using `secrets: inherit`:
 `inherit` hands every secret of the calling repository to the gate, including ones it never uses.
 
-The Java jobs (`coverage-java`, `spotbugs-security`, `verify-maven-signatures`) write
-`OSSRH_USER` / `OSSRH_SECRET` into a `settings.xml` and then run Maven on **the PR's own
-`pom.xml`**, so any plugin that `pom.xml` declares can read those credentials. Pass them only for
-repositories whose builds really need authenticated OSSRH access, and be aware that anyone who can
-push a branch to such a repository can run code with them.
+The Java jobs (`coverage-java`, `spotbugs-security`, `verify-maven-signatures`) run Maven on **the
+PR's own `pom.xml`**, so anything that file declares could read credentials handed to them. For
+that reason the gate gives them **no publishing credentials**: they only resolve dependencies and
+plugins (MOSIP's snapshot repository is readable anonymously), and `mvn verify` stops before the
+`deploy` phase, which is the only place the `ossrh` publishing server is used. Only
+`CODECOV_LICENSE` needs to be mapped.
 
 | Secret | Needed by | Notes |
 |---|---|---|
 | `CODECOV_LICENSE` | **All coverage jobs** | Codecov v4+ requires a token even for public repos. On protected-branch PRs a missing token makes the coverage job go red. |
-| `OSSRH_USER` / `OSSRH_SECRET` | `coverage-java`, `spotbugs-security`, `verify-maven-signatures` | Needed only if the Maven build resolves dependencies from OSSRH (e.g. SNAPSHOT/staging). Injected into a generated `settings.xml`. |
+| `OSSRH_USER` / `OSSRH_SECRET` | — | **No longer used.** Still declared so a caller that passes them does not fail. If a build genuinely needs authenticated access to a private repository, that needs a deliberate change to the gate, not just passing these. |
 | `GITLEAKS_LICENSE` | — | **No longer used.** Secret scanning runs the open-source gitleaks CLI. Still declared so existing callers that pass it keep working. |
 
 ---
@@ -211,8 +212,7 @@ These are things the **calling workflow / caller repo** must provide — the gat
       you trigger on `pull_request` only; on a PR run the gate does not write to your repository.
 - [ ] **Enable the Dependency graph** (Settings → Advanced Security) — `dependency-review` fails
       without it.
-- [ ] **Map the secrets explicitly** under `secrets:` — `CODECOV_LICENSE`, and `OSSRH_USER` /
-      `OSSRH_SECRET` only if your Maven build needs them (see §4 for the exposure this implies).
+- [ ] **Map the secrets explicitly** under `secrets:` — only `CODECOV_LICENSE` is needed (see §4).
 - [ ] **Declare each stack's location** via the matching `*_SERVICE_LOCATION` input (see §2).
 - [ ] **Do not reuse the gate's concurrency group.** The gate cancels a PR's superseded run using the
       group `pr-gate-<caller workflow name>-<PR number>`; don't define the same group on your caller.
@@ -227,7 +227,7 @@ These are things the **calling workflow / caller repo** must provide — the gat
 - `pom.xml` at the Java location.
 - **JaCoCo must be configured** so `mvn verify` produces `**/target/site/jacoco/jacoco.xml`. No
   JaCoCo report -> nothing to upload -> the upload step fails.
-- `OSSRH_USER` / `OSSRH_SECRET` if the build pulls from OSSRH.
+- No OSSRH credentials are needed or used (see §4).
 
 ### SpotBugs + Find Security Bugs (`spotbugs-security`)
 - Needs no `pom.xml` changes: the plugin is invoked ad hoc and analyses compiled bytecode, so the

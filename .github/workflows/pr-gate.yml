@@ -1,11 +1,11 @@
 name: PR Gate
 
 on:
-  # workflow_dispatch lets a caller repo run this gate manually from its own
-  # Actions tab (via a small local stub workflow with on: workflow_dispatch
-  # that does uses: this-file). spotbugs-security uses that trigger as its
-  # "full backlog scan" mode -- see SPOTBUGS_COMMENT_MODE below.
-  workflow_dispatch:
+  # A caller can still run this gate manually: a small stub in the caller repo
+  # with on: workflow_dispatch that does `uses: <this file>`. Inside a called
+  # workflow github.event_name is the CALLER's event, so spotbugs-security sees
+  # workflow_dispatch there and does its "full backlog scan" -- see
+  # SPOTBUGS_COMMENT_MODE below. No trigger is needed on this file itself.
   workflow_call:
     inputs:
       SERVICE_LOCATION:
@@ -85,6 +85,9 @@ on:
       GITLEAKS_LICENSE:
         required: false
 
+# Every job sets its own permissions; nothing is granted by default.
+permissions: {}
+
 # A new push to a PR cancels that PR's still-running gate, so superseded runs do
 # not keep occupying the org's shared runner pool. Push runs get a unique group
 # (the run id), so they are never cancelled or replaced while pending -- GitHub
@@ -135,11 +138,14 @@ jobs:
       # triggers are what write the stack-detection cache, unrelated to blocking.
       - name: Check whether this PR targets a protected branch
         id: branch-check
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PROTECTED_BRANCHES: ${{ inputs.PROTECTED_BRANCHES }}
         run: |
           IS_PROTECTED=false
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            BASE_REF="${{ github.event.pull_request.base.ref }}"
-            IFS=',' read -ra PATTERNS <<< "${{ inputs.PROTECTED_BRANCHES }}"
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            IFS=',' read -ra PATTERNS <<< "$PROTECTED_BRANCHES"
             for pattern in "${PATTERNS[@]}"; do
               pattern="$(echo "$pattern" | xargs)"  # trim whitespace
               case "$BASE_REF" in
@@ -148,7 +154,7 @@ jobs:
             done
           fi
           echo "is_protected=$IS_PROTECTED" >> "$GITHUB_OUTPUT"
-          echo "PR base ref: ${{ github.event.pull_request.base.ref }} -- protected: $IS_PROTECTED"
+          echo "PR base ref: $BASE_REF -- protected: $IS_PROTECTED"
 
       # On a PR, reuse the detection cache committed by the last push to the
       # base branch instead of recomputing from scratch on every PR (stack
@@ -192,6 +198,8 @@ jobs:
       - name: Read cached detection
         id: cached
         if: steps.mode.outputs.use_cache == 'true'
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
           python3 -c "
           import json, os
@@ -203,24 +211,31 @@ jobs:
                   f.write(f'{k}={v}\n')
               f.write('images=' + json.dumps(images) + '\n')
           "
-          echo "Using cached detection from origin/${{ github.event.pull_request.base.ref }}."
+          echo "Using cached detection from origin/$BASE_REF."
 
       - name: Detect stacks (live)
         id: detect
         if: steps.mode.outputs.use_cache != 'true'
+        env:
+          BASE_IN: ${{ inputs.SERVICE_LOCATION }}
+          JAVA_IN: ${{ inputs.JAVA_SERVICE_LOCATION }}
+          GO_IN: ${{ inputs.GO_SERVICE_LOCATION }}
+          NPM_IN: ${{ inputs.NPM_SERVICE_LOCATION }}
+          ANDROID_IN: ${{ inputs.ANDROID_SERVICE_LOCATION }}
+          FLUTTER_IN: ${{ inputs.FLUTTER_SERVICE_LOCATION }}
         run: |
           # Resolve each stack location: use the type-specific input when set,
           # otherwise fall back to SERVICE_LOCATION. Single-stack callers only
           # need SERVICE_LOCATION; multi-stack callers set per-type overrides.
           fexists() { [ -f "$1" ] && echo "true" || echo "false"; }
-          BASE="${{ inputs.SERVICE_LOCATION }}"
+          BASE="$BASE_IN"
           resolve() { local v="$1"; [ -n "$v" ] && echo "$v" || echo "$BASE"; }
 
-          JAVA_LOC="$(resolve "${{ inputs.JAVA_SERVICE_LOCATION }}")"
-          GO_LOC="$(resolve "${{ inputs.GO_SERVICE_LOCATION }}")"
-          NPM_LOC="$(resolve "${{ inputs.NPM_SERVICE_LOCATION }}")"
-          ANDROID_LOC="$(resolve "${{ inputs.ANDROID_SERVICE_LOCATION }}")"
-          FLUTTER_LOC="$(resolve "${{ inputs.FLUTTER_SERVICE_LOCATION }}")"
+          JAVA_LOC="$(resolve "$JAVA_IN")"
+          GO_LOC="$(resolve "$GO_IN")"
+          NPM_LOC="$(resolve "$NPM_IN")"
+          ANDROID_LOC="$(resolve "$ANDROID_IN")"
+          FLUTTER_LOC="$(resolve "$FLUTTER_IN")"
 
           echo "has_java=$(fexists "$JAVA_LOC/pom.xml")"       >> $GITHUB_OUTPUT
           echo "has_go=$(fexists "$GO_LOC/go.mod")"             >> $GITHUB_OUTPUT
@@ -352,10 +367,9 @@ jobs:
           IMAGES_JSON: ${{ steps.discover.outputs.images }}
         run: |
           python3 - <<'PYEOF'
-          import json, os
+          import json, os, re, subprocess, sys
           e = os.environ
-          data = {
-              'source_sha': e['SOURCE_SHA'],
+          new = {
               'inputs_key': e['INPUTS_KEY'],
               'detect': {
                   'has_java': e['HAS_JAVA'],
@@ -371,7 +385,28 @@ jobs:
               },
               'images': json.loads(e.get('IMAGES_JSON') or '[]'),
           }
-          json.dump(data, open('.pr-gate-cache.json', 'w'), indent=2)
+          marker = re.compile(r'(^|/)(pom\.xml|go\.mod|package\.json|settings\.gradle(\.kts)?|pubspec\.yaml|Dockerfile(\.[^/]*)?)$')
+
+          # Rewrite only when something that matters changed, so an ordinary push does
+          # not produce a bot commit: the detection result or the caller inputs differ
+          # from the recorded ones, or a marker file changed since the recorded source
+          # commit (advancing it stops PRs falling back to live detection).
+          try:
+              old = json.load(open('.pr-gate-cache.json'))
+          except (OSError, ValueError):
+              old = None
+          if isinstance(old, dict):
+              src = old.pop('source_sha', '')
+              if src and old == new:
+                  have = subprocess.run(['git', 'cat-file', '-e', src + '^{commit}'], capture_output=True).returncode == 0
+                  if have:
+                      d = subprocess.run(['git', 'diff', '--name-only', src, 'HEAD'], capture_output=True, text=True)
+                      if d.returncode == 0 and not any(marker.search(l) for l in d.stdout.splitlines()):
+                          print('Cache is still valid; not rewriting it.')
+                          sys.exit(0)
+          out = {'source_sha': e['SOURCE_SHA']}
+          out.update(new)
+          json.dump(out, open('.pr-gate-cache.json', 'w'), indent=2)
           print('Wrote .pr-gate-cache.json')
           PYEOF
 
@@ -392,7 +427,7 @@ jobs:
   secret-scan:
     name: Secret Scan
     needs: detect
-    if: ${{ !cancelled() }}   # keep scanning (and keep is_protected) even if detect failed
+    if: ${{ !cancelled() }}   # keep scanning even if detect failed; an empty is_protected then blocks
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -415,7 +450,7 @@ jobs:
       # any branch not listed in PROTECTED_BRANCHES -- see that input's
       # description for the reasoning.
       - uses: reviewdog/action-gitleaks@2b7b5685e3e3eecddab5d30cfa04f18123031421  # v1.8.0
-        continue-on-error: ${{ needs.detect.outputs.is_protected != 'true' }}
+        continue-on-error: ${{ needs.detect.outputs.is_protected == 'false' }}
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           reporter: github-pr-review
@@ -427,7 +462,7 @@ jobs:
   dependency-review:
     name: Dependency CVE Review
     needs: detect
-    if: ${{ !cancelled() }}   # keep scanning (and keep is_protected) even if detect failed
+    if: ${{ !cancelled() }}   # keep scanning even if detect failed; an empty is_protected then blocks
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -440,7 +475,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
       - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294  # v5.0.0
-        continue-on-error: ${{ needs.detect.outputs.is_protected != 'true' }}
+        continue-on-error: ${{ needs.detect.outputs.is_protected == 'false' }}
         with:
           fail-on-severity: high
           comment-summary-in-pr: on-failure
@@ -448,7 +483,7 @@ jobs:
   lint-workflows:
     name: Lint GitHub Actions Workflows
     needs: detect
-    if: ${{ !cancelled() }}   # keep scanning (and keep is_protected) even if detect failed
+    if: ${{ !cancelled() }}   # keep scanning even if detect failed; an empty is_protected then blocks
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -463,7 +498,7 @@ jobs:
       # Official reviewdog integration -- runs actionlint and posts inline PR
       # review comments in one step, replacing the previous manual install+run.
       - uses: reviewdog/action-actionlint@2085657ab2c7f48c58edcc767fba576f63bea76b  # v1.77.0
-        continue-on-error: ${{ needs.detect.outputs.is_protected != 'true' }}
+        continue-on-error: ${{ needs.detect.outputs.is_protected == 'false' }}
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           reporter: github-pr-review
@@ -472,7 +507,7 @@ jobs:
   trivy-fs:
     name: Trivy Filesystem Vulnerability Scan
     needs: detect
-    if: ${{ !cancelled() }}   # keep scanning (and keep is_protected) even if detect failed
+    if: ${{ !cancelled() }}   # keep scanning even if detect failed; an empty is_protected then blocks
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -515,12 +550,16 @@ jobs:
           format: json
           output: trivy-base.json
 
+      # trivy-base/ (the checkout above) sits inside the workspace, so scanning "."
+      # would also report its manifests as "trivy-base/<file>", which never match a
+      # base finding and would list every existing finding as new. Skip it.
       - name: Trivy scan head ref (JSON for diff)
         if: inputs.trivy_comment_mode == 'diff' && github.event_name == 'pull_request'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
           scan-type: fs
           scan-ref: .
+          skip-dirs: trivy-base
           severity: ${{ inputs.SCAN_SEVERITY }}
           exit-code: '0'
           format: json
@@ -627,7 +666,7 @@ jobs:
       # continue-on-error makes this advisory on any branch not listed in
       # PROTECTED_BRANCHES; the comment above still shows every finding either way.
       - name: Gate on HIGH/CRITICAL findings
-        continue-on-error: ${{ needs.detect.outputs.is_protected != 'true' }}
+        continue-on-error: ${{ needs.detect.outputs.is_protected == 'false' }}
         env:
           BLOCKING: ${{ steps.trivy-body.outputs.blocking }}
           MODE: ${{ inputs.trivy_comment_mode }}
@@ -831,8 +870,9 @@ jobs:
         if: github.event_name == 'pull_request' && steps.scan.outcome == 'success'
         env:
           REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE_NAME: ${{ steps.safe.outputs.name }}
         run: |
-          reviewdog -f=sarif -name="trivy-image-${{ steps.safe.outputs.name }}" \
+          reviewdog -f=sarif -name="trivy-image-$IMAGE_NAME" \
             -reporter=github-pr-check -filter-mode=nofilter -fail-level=none < trivy-image.sarif
 
   android-lint:
@@ -862,8 +902,10 @@ jobs:
       # uploaded as a workflow artifact rather than failing the PR.
       - name: Run Android Lint
         id: lint
+        env:
+          LOC: ${{ needs.detect.outputs.android_location }}
         run: |
-          cd "${{ needs.detect.outputs.android_location }}"
+          cd "$LOC"
           set +e
           ./gradlew lint
           code=$?
@@ -954,8 +996,10 @@ jobs:
       - name: Compile (SpotBugs analyzes bytecode, not source)
         id: head-compile
         continue-on-error: true
+        env:
+          LOC: ${{ needs.detect.outputs.java_location }}
         run: |
-          cd "${{ needs.detect.outputs.java_location }}"
+          cd "$LOC"
           mvn -U -B compile -Dgpg.skip=true -Dmaven.wagon.http.retryHandler.count=2 \
             --file pom.xml -s "$GITHUB_WORKSPACE/settings.xml"
 
@@ -970,8 +1014,10 @@ jobs:
       - name: Run SpotBugs + Find Security Bugs (non-blocking)
         id: spotbugs
         if: steps.head-compile.outcome == 'success'
+        env:
+          LOC: ${{ needs.detect.outputs.java_location }}
         run: |
-          cd "${{ needs.detect.outputs.java_location }}"
+          cd "$LOC"
           set +e
           mvn -B compile -Dgpg.skip=true com.github.spotbugs:spotbugs-maven-plugin:4.10.4.1:spotbugs \
             -Dspotbugs.pluginList="$GITHUB_WORKSPACE/findsecbugs-plugin.jar" \
@@ -984,9 +1030,11 @@ jobs:
 
       - name: Collect head SARIF reports
         if: steps.head-compile.outcome == 'success'
+        env:
+          LOC: ${{ needs.detect.outputs.java_location }}
         run: |
           mkdir -p "$GITHUB_WORKSPACE/spotbugs-sarif-head"
-          find "${{ needs.detect.outputs.java_location }}" -name 'spotbugsSarif.json' -print0 | \
+          find "$LOC" -name 'spotbugsSarif.json' -print0 | \
             while IFS= read -r -d '' f; do
               # Prefix with a letter: java_location often starts with "./", and
               # tr keeps "." as a literal character, so an unprefixed name can
@@ -1026,8 +1074,10 @@ jobs:
         id: base-compile
         continue-on-error: true
         if: inputs.SPOTBUGS_COMMENT_MODE == 'diff' && github.event_name == 'pull_request' && steps.head-compile.outcome == 'success'
+        env:
+          LOC: ${{ needs.detect.outputs.java_location }}
         run: |
-          cd "spotbugs-base/${{ needs.detect.outputs.java_location }}"
+          cd "spotbugs-base/$LOC"
           mvn -U -B compile -Dgpg.skip=true -Dmaven.wagon.http.retryHandler.count=2 \
             --file pom.xml -s "$GITHUB_WORKSPACE/settings.xml"
 
@@ -1035,8 +1085,10 @@ jobs:
         id: base-scan
         continue-on-error: true
         if: inputs.SPOTBUGS_COMMENT_MODE == 'diff' && github.event_name == 'pull_request' && steps.base-compile.outcome == 'success'
+        env:
+          LOC: ${{ needs.detect.outputs.java_location }}
         run: |
-          cd "spotbugs-base/${{ needs.detect.outputs.java_location }}"
+          cd "spotbugs-base/$LOC"
           set +e
           mvn -B compile -Dgpg.skip=true com.github.spotbugs:spotbugs-maven-plugin:4.10.4.1:spotbugs \
             -Dspotbugs.pluginList="$GITHUB_WORKSPACE/findsecbugs-plugin.jar" \
@@ -1048,9 +1100,11 @@ jobs:
 
       - name: Collect base SARIF reports
         if: inputs.SPOTBUGS_COMMENT_MODE == 'diff' && github.event_name == 'pull_request' && steps.base-compile.outcome == 'success'
+        env:
+          LOC: ${{ needs.detect.outputs.java_location }}
         run: |
           mkdir -p "$GITHUB_WORKSPACE/spotbugs-sarif-base"
-          find "spotbugs-base/${{ needs.detect.outputs.java_location }}" -name 'spotbugsSarif.json' -print0 | \
+          find "spotbugs-base/$LOC" -name 'spotbugsSarif.json' -print0 | \
             while IFS= read -r -d '' f; do
               safe="report_$(echo "$f" | tr -c 'a-zA-Z0-9._-' '_')"
               cp "$f" "$GITHUB_WORKSPACE/spotbugs-sarif-base/${safe}.sarif"
@@ -1260,9 +1314,11 @@ jobs:
           PYEOF
 
       - name: Run tests and generate coverage
-        continue-on-error: ${{ needs.detect.outputs.is_protected != 'true' }}
+        continue-on-error: ${{ needs.detect.outputs.is_protected == 'false' }}
+        env:
+          LOC: ${{ needs.detect.outputs.java_location }}
         run: |
-          cd ${{ needs.detect.outputs.java_location }}
+          cd "$LOC"
           mvn -U -B verify -Dgpg.skip=true -Dmaven.wagon.http.retryHandler.count=2 \
             --file pom.xml -s $GITHUB_WORKSPACE/settings.xml
 
@@ -1272,7 +1328,7 @@ jobs:
           token: ${{ secrets.CODECOV_LICENSE }}
           files: '${{ needs.detect.outputs.java_location }}/**/target/site/jacoco/jacoco.xml'
           flags: java
-          fail_ci_if_error: ${{ needs.detect.outputs.is_protected == 'true' }}
+          fail_ci_if_error: ${{ needs.detect.outputs.is_protected != 'false' }}
 
   coverage-go:
     name: Go Coverage → Codecov
@@ -1294,9 +1350,11 @@ jobs:
           cache: true
 
       - name: Run tests and generate coverage
-        continue-on-error: ${{ needs.detect.outputs.is_protected != 'true' }}
+        continue-on-error: ${{ needs.detect.outputs.is_protected == 'false' }}
+        env:
+          LOC: ${{ needs.detect.outputs.go_location }}
         run: |
-          cd ${{ needs.detect.outputs.go_location }}
+          cd "$LOC"
           go test -v -coverprofile=coverage.out -covermode=atomic ./...
 
       - name: Upload to Codecov
@@ -1305,7 +1363,7 @@ jobs:
           token: ${{ secrets.CODECOV_LICENSE }}
           files: ${{ needs.detect.outputs.go_location }}/coverage.out
           flags: go
-          fail_ci_if_error: ${{ needs.detect.outputs.is_protected == 'true' }}
+          fail_ci_if_error: ${{ needs.detect.outputs.is_protected != 'false' }}
 
   coverage-npm:
     name: npm Coverage → Codecov
@@ -1342,7 +1400,7 @@ jobs:
           cache-dependency-path: ${{ needs.detect.outputs.npm_location }}/${{ steps.pm.outputs.lockfile }}
 
       - name: Install dependencies
-        continue-on-error: ${{ needs.detect.outputs.is_protected != 'true' }}
+        continue-on-error: ${{ needs.detect.outputs.is_protected == 'false' }}
         env:
           NPM_LOC: ${{ needs.detect.outputs.npm_location }}
           MANAGER: ${{ steps.pm.outputs.manager }}
@@ -1357,10 +1415,13 @@ jobs:
           esac
 
       - name: Run tests and generate coverage
-        continue-on-error: ${{ needs.detect.outputs.is_protected != 'true' }}
+        continue-on-error: ${{ needs.detect.outputs.is_protected == 'false' }}
+        env:
+          LOC: ${{ needs.detect.outputs.npm_location }}
+          NPM_COVERAGE_COMMAND: ${{ inputs.NPM_COVERAGE_COMMAND }}
         run: |
-          cd ${{ needs.detect.outputs.npm_location }}
-          ${{ inputs.NPM_COVERAGE_COMMAND }}
+          cd "$LOC"
+          bash -c "$NPM_COVERAGE_COMMAND"
 
       - name: Upload to Codecov
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f  # v7.0.0
@@ -1368,7 +1429,7 @@ jobs:
           token: ${{ secrets.CODECOV_LICENSE }}
           files: '${{ needs.detect.outputs.npm_location }}/coverage/lcov.info'
           flags: npm
-          fail_ci_if_error: ${{ needs.detect.outputs.is_protected == 'true' }}
+          fail_ci_if_error: ${{ needs.detect.outputs.is_protected != 'false' }}
 
   coverage-android:
     name: Android Coverage → Codecov
@@ -1390,9 +1451,11 @@ jobs:
           java-version: ${{ inputs.JAVA_VERSION }}
 
       - name: Run Android unit tests with coverage
-        continue-on-error: ${{ needs.detect.outputs.is_protected != 'true' }}
+        continue-on-error: ${{ needs.detect.outputs.is_protected == 'false' }}
+        env:
+          LOC: ${{ needs.detect.outputs.android_location }}
         run: |
-          cd ${{ needs.detect.outputs.android_location }}
+          cd "$LOC"
           ./gradlew testDebugUnitTest jacocoTestReport
 
       - name: Upload to Codecov
@@ -1401,7 +1464,7 @@ jobs:
           token: ${{ secrets.CODECOV_LICENSE }}
           files: '${{ needs.detect.outputs.android_location }}/**/build/reports/jacoco/**/*.xml'
           flags: android
-          fail_ci_if_error: ${{ needs.detect.outputs.is_protected == 'true' }}
+          fail_ci_if_error: ${{ needs.detect.outputs.is_protected != 'false' }}
 
   coverage-flutter:
     name: Flutter Coverage → Codecov
@@ -1424,15 +1487,19 @@ jobs:
           cache: true
 
       - name: Install dependencies
-        continue-on-error: ${{ needs.detect.outputs.is_protected != 'true' }}
+        continue-on-error: ${{ needs.detect.outputs.is_protected == 'false' }}
+        env:
+          LOC: ${{ needs.detect.outputs.flutter_location }}
         run: |
-          cd ${{ needs.detect.outputs.flutter_location }}
+          cd "$LOC"
           flutter pub get
 
       - name: Run tests and generate coverage
-        continue-on-error: ${{ needs.detect.outputs.is_protected != 'true' }}
+        continue-on-error: ${{ needs.detect.outputs.is_protected == 'false' }}
+        env:
+          LOC: ${{ needs.detect.outputs.flutter_location }}
         run: |
-          cd ${{ needs.detect.outputs.flutter_location }}
+          cd "$LOC"
           flutter test --coverage
 
       - name: Upload to Codecov
@@ -1441,7 +1508,7 @@ jobs:
           token: ${{ secrets.CODECOV_LICENSE }}
           files: '${{ needs.detect.outputs.flutter_location }}/coverage/lcov.info'
           flags: flutter
-          fail_ci_if_error: ${{ needs.detect.outputs.is_protected == 'true' }}
+          fail_ci_if_error: ${{ needs.detect.outputs.is_protected != 'false' }}
 
 # ─────────────────────────────────────────────
 # TIER 2 — Supply-chain integrity (POM-gated)
@@ -1500,8 +1567,10 @@ jobs:
       # step green and let the comment step surface any problems.
       - name: Run pgpverify (non-blocking)
         id: pgpverify
+        env:
+          LOC: ${{ needs.detect.outputs.java_location }}
         run: |
-          cd "${{ needs.detect.outputs.java_location }}"
+          cd "$LOC"
           set +e
           mvn -B -U \
             org.simplify4u.plugins:pgpverify-maven-plugin:1.19.1:check \
@@ -1513,16 +1582,18 @@ jobs:
           echo "pgpverify finished with exit code $code (non-blocking)."
 
       - name: Build pgpverify comment body
+        env:
+          CODE: ${{ steps.pgpverify.outputs.exit_code }}
         run: |
           LOG="$GITHUB_WORKSPACE/pgpverify.log"
           OUT="$GITHUB_WORKSPACE/pgpverify-comment.md"
-          CODE="${{ steps.pgpverify.outputs.exit_code }}"
 
           # Strip ANSI, then keep the signature-relevant WARN/ERROR lines the
           # plugin emits (unsigned / invalid / untrusted / missing-key entries).
           problems="$(sed 's/\x1b\[[0-9;]*m//g' "$LOG" 2>/dev/null \
             | grep -Ei 'pgp|signature|no key|not found|invalid|untrusted|not trusted|unsigned' \
             | grep -Ei 'warn|error|invalid|no signature|not found|untrusted|not trusted|unsigned|no key' \
+            | grep -Eiv 'Failed to execute goal|BUILD FAILURE|Help [0-9]|Re-run Maven|full stack trace|For more information|MojoExecutionException|MojoFailureException' \
             | head -100 || true)"
 
           if [ "$CODE" = "0" ]; then

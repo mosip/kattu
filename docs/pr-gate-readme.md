@@ -25,7 +25,8 @@ The gate has two tiers:
 > 1. Trigger the caller on `pull_request`.
 > 2. Grant the token **`contents: write`, `pull-requests: write`, `security-events: write` and
 >    `checks: write`** (all four are required — see §5).
-> 3. Make secrets reachable (`secrets: inherit`) and point each `*_SERVICE_LOCATION` at the right folder.
+> 3. Map the secrets the gate needs explicitly (see §4 — avoid `secrets: inherit`) and point each
+>    `*_SERVICE_LOCATION` at the right folder.
 > 4. Enable the repository's **Dependency graph** (Settings → Advanced Security), or `dependency-review` fails.
 
 ---
@@ -50,8 +51,9 @@ permissions:
 
 jobs:
   pr-gate:
-    uses: mosip/kattu/.github/workflows/pr-gate.yml@master   # pin to a tag/SHA for production
-    secrets: inherit
+    uses: mosip/kattu/.github/workflows/pr-gate.yml@develop   # pin to a release tag or commit SHA once one exists
+    secrets:
+      CODECOV_LICENSE: ${{ secrets.CODECOV_LICENSE }}
 ```
 
 With `SERVICE_LOCATION` defaulting to `.`, the gate auto-detects whichever stacks live at the repo
@@ -66,7 +68,9 @@ root and runs only those jobs.
 | `workflow_dispatch` (via a small caller stub) | Optional | Full-backlog run: SARIF is uploaded to the Security tab like a push run, and the SpotBugs report is also uploaded as a workflow artifact. |
 
 The cache is an optimisation only: if it is missing, or the bot cannot push it (for example a
-branch-protected default branch), PRs simply detect stacks live. A PR whose own diff touches a stack
+branch-protected default branch), PRs simply detect stacks live. A push rewrites the cache only
+when something that matters changed (the detection result, the caller's inputs, or a marker file
+since the recorded commit), so ordinary pushes do not create bot commits. A PR whose own diff touches a stack
 marker file (`pom.xml`, `go.mod`, `package.json`, `settings.gradle*`, `pubspec.yaml`, a
 `Dockerfile` or `Dockerfile.*`) always detects live, so a new stack is scanned immediately. The
 cache also records the `*_SERVICE_LOCATION` inputs it was built with and the commit it was
@@ -119,7 +123,9 @@ If the marker isn't found, that job is skipped silently — a repo only pays for
 ## 3. What blocks, what only reports
 
 Every job runs and reports on every PR. Whether a failure can **fail the PR** depends on the PR's
-**base branch** matched against `PROTECTED_BRANCHES`:
+**base branch** matched against `PROTECTED_BRANCHES`. If the `detect` job fails before it can work
+out the target branch, the blocking jobs still run and treat the PR as protected (they fail closed,
+not open):
 
 | PR targets… | Behaviour |
 |---|---|
@@ -169,7 +175,14 @@ unless your branch protection lists them as required checks — do not add them 
 ## 4. Secrets
 
 All secrets are declared `required: false`. In a `workflow_call`, secrets do **not** flow
-automatically — use `secrets: inherit` (recommended) or map each one explicitly.
+automatically. **Map each one explicitly** under `secrets:` rather than using `secrets: inherit`:
+`inherit` hands every secret of the calling repository to the gate, including ones it never uses.
+
+The Java jobs (`coverage-java`, `spotbugs-security`, `verify-maven-signatures`) write
+`OSSRH_USER` / `OSSRH_SECRET` into a `settings.xml` and then run Maven on **the PR's own
+`pom.xml`**, so any plugin that `pom.xml` declares can read those credentials. Pass them only for
+repositories whose builds really need authenticated OSSRH access, and be aware that anyone who can
+push a branch to such a repository can run code with them.
 
 | Secret | Needed by | Notes |
 |---|---|---|
@@ -198,8 +211,8 @@ These are things the **calling workflow / caller repo** must provide — the gat
       you trigger on `pull_request` only; on a PR run the gate does not write to your repository.
 - [ ] **Enable the Dependency graph** (Settings → Advanced Security) — `dependency-review` fails
       without it.
-- [ ] **Make secrets reachable** — `secrets: inherit`, with `CODECOV_LICENSE` (and, for Maven,
-      `OSSRH_USER` / `OSSRH_SECRET`) available as org/repo secrets.
+- [ ] **Map the secrets explicitly** under `secrets:` — `CODECOV_LICENSE`, and `OSSRH_USER` /
+      `OSSRH_SECRET` only if your Maven build needs them (see §4 for the exposure this implies).
 - [ ] **Declare each stack's location** via the matching `*_SERVICE_LOCATION` input (see §2).
 - [ ] **Do not reuse the gate's concurrency group.** The gate cancels a PR's superseded run using the
       group `pr-gate-<caller workflow name>-<PR number>`; don't define the same group on your caller.
@@ -315,18 +328,19 @@ permissions:
 
 jobs:
   pr-gate:
-    uses: mosip/kattu/.github/workflows/pr-gate.yml@master   # pin to a tag/SHA for production
+    uses: mosip/kattu/.github/workflows/pr-gate.yml@develop   # pin to a release tag or commit SHA once one exists
     with:
       SERVICE_LOCATION: '.'
       GO_SERVICE_LOCATION: 'esignet-service'
       NPM_SERVICE_LOCATION: 'oidc-ui'
       NPM_COVERAGE_COMMAND: 'npx vitest run --coverage'
-    secrets: inherit
+    secrets:
+      CODECOV_LICENSE: ${{ secrets.CODECOV_LICENSE }}
 ```
 
 esignet-side prerequisites that are **not** kattu changes:
 - `oidc-ui` uses Vitest — its coverage needs `@vitest/coverage-v8` (matching the Vitest major) installed.
-- `CODECOV_LICENSE` must be available as an org secret (it is, via `secrets: inherit`).
+- `CODECOV_LICENSE` must be available as an org or repository secret and mapped under `secrets:` as above.
 
 > Note: with `SERVICE_LOCATION: '.'`, if a `pom.xml` exists at the repo root the Java jobs run there
 > even without `JAVA_SERVICE_LOCATION`. Set `JAVA_SERVICE_LOCATION` explicitly when the POM you want

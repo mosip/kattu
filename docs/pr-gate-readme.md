@@ -134,7 +134,7 @@ not open):
 
 | Job | Can block on a protected branch? | How findings are shown |
 |---|---|---|
-| `secret-scan` (gitleaks) | Yes | Inline review comments on lines the PR adds. Scans only the PR's own commits. |
+| `secret-scan` (gitleaks) | Yes | Inline review comments on lines the PR adds. Scans only the PR's own commits. Runs on pull requests only, so it is skipped on `push` and manual runs (there is no PR to comment on, and no commit range to scope to). |
 | `dependency-review` | Yes | GitHub's dependency-review summary comment, only on failure. Runs on pull requests only (it compares the PR's base and head), so it is skipped on `push` and manual runs. |
 | `lint-workflows` (actionlint) | Yes | Inline review comments. |
 | `trivy-fs` | Yes (HIGH/CRITICAL) | Sticky PR comment. |

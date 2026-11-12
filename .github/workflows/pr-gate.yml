@@ -429,7 +429,9 @@ jobs:
   secret-scan:
     name: Secret Scan
     needs: detect
-    if: ${{ !cancelled() }}   # keep scanning even if detect failed; an empty is_protected then blocks
+    # Pull requests only: findings are posted as inline review comments, which need a PR, and on a
+    # push there is no commit range to scope to, so it would rescan the whole git history each time.
+    if: ${{ !cancelled() && github.event_name == 'pull_request' }}   # still runs if detect failed; an empty is_protected then blocks
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -458,8 +460,8 @@ jobs:
           reporter: github-pr-review
           level: error
           fail_level: error
-          # On a PR, scan only the commits the PR adds, not the repo's whole history.
-          gitleaks_flags: ${{ github.event_name == 'pull_request' && format('--log-opts={0}..{1}', github.event.pull_request.base.sha, github.event.pull_request.head.sha) || '' }}
+          # Scan only the commits the PR adds, not the repo's whole history.
+          gitleaks_flags: ${{ format('--log-opts={0}..{1}', github.event.pull_request.base.sha, github.event.pull_request.head.sha) }}
 
   dependency-review:
     name: Dependency CVE Review

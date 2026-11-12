@@ -1553,9 +1553,12 @@ jobs:
 
           # Strip ANSI, then keep the signature-relevant WARN/ERROR lines the
           # plugin emits (unsigned / invalid / untrusted / missing-key entries).
+          # A bare "not found" or "invalid" is deliberately not a signature signal: a 404 on
+          # a download or an invalid POM is a build problem, not a signature problem, and
+          # Maven's own goal-failure lines are excluded below.
           problems="$(sed 's/\x1b\[[0-9;]*m//g' "$LOG" 2>/dev/null \
-            | grep -Ei 'pgp|signature|no key|not found|invalid|untrusted|not trusted|unsigned' \
-            | grep -Ei 'warn|error|invalid|no signature|not found|untrusted|not trusted|unsigned|no key' \
+            | grep -Ei 'pgp|signature|no key|untrusted|not trusted|unsigned' \
+            | grep -Ei 'warn|error|invalid|no signature|untrusted|not trusted|unsigned|no key' \
             | grep -Eiv 'Failed to execute goal|BUILD FAILURE|Help [0-9]|Re-run Maven|full stack trace|For more information|MojoExecutionException|MojoFailureException' \
             | head -100 || true)"
 

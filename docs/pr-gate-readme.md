@@ -151,6 +151,17 @@ with:
   PROTECTED_BRANCHES: 'main,release-*'
 ```
 
+### If `detect` fails
+
+`secret-scan`, `dependency-review`, `lint-workflows` and `trivy-fs` still run, and block, because a PR
+whose target branch is unknown is treated as protected. `trivy-config` and `semgrep` never depended on
+`detect`. Every job that needs `detect`'s stack output — all `coverage-*` jobs, `spotbugs-security`,
+`verify-maven-signatures`, `android-lint` and `trivy-image-scan` — is **skipped**, and GitHub counts a
+skipped required check as passing. A caller that requires coverage checks but not the detection check
+could therefore merge without a test run. **Add `Detect Stacks` (shown as `<your caller job id> / Detect
+Stacks`, for example `pr-gate / Detect Stacks`) to the required status checks** in branch protection, so a
+failed detection blocks the merge instead of silently skipping the tests.
+
 ### Comments are silent when clean
 
 A check with nothing to report posts nothing. The Trivy, SpotBugs and pgpverify sticky comments are
@@ -214,6 +225,8 @@ These are things the **calling workflow / caller repo** must provide — the gat
       without it.
 - [ ] **Map the secrets explicitly** under `secrets:` — only `CODECOV_LICENSE` is needed (see §4).
 - [ ] **Declare each stack's location** via the matching `*_SERVICE_LOCATION` input (see §2).
+- [ ] **Require the `Detect Stacks` check** in branch protection alongside any `coverage-*` checks you
+      require; otherwise a failed detection skips those checks and a skipped required check passes (see §3).
 - [ ] **Do not reuse the gate's concurrency group.** The gate cancels a PR's superseded run using the
       group `pr-gate-<caller workflow name>-<PR number>`; don't define the same group on your caller.
       Push runs get a unique group, so they are never cancelled or dropped.

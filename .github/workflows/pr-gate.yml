@@ -464,7 +464,9 @@ jobs:
   dependency-review:
     name: Dependency CVE Review
     needs: detect
-    if: ${{ !cancelled() }}   # keep scanning even if detect failed; an empty is_protected then blocks
+    # Compares the PR's base and head, so it only makes sense on a pull request; on a push or
+    # manual run the action has no base/head and would just log an error.
+    if: ${{ !cancelled() && github.event_name == 'pull_request' }}   # still runs if detect failed; an empty is_protected then blocks
     runs-on: ubuntu-latest
     permissions:
       contents: read

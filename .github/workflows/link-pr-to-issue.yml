@@ -2,6 +2,23 @@ name: PR → Issue Linker (smart)
 
 on:
   workflow_call:
+    inputs:
+      allowed_owners:
+        description: >-
+          Space-separated list of GitHub owners/orgs whose issues may be linked.
+          References to any other owner are ignored. Defaults to the owner of the
+          calling repository.
+        type: string
+        required: false
+        default: ''
+      max_links:
+        description: >-
+          Maximum number of issue references allowed per PR. If a PR references
+          more than this, nothing is linked (it is almost always pasted
+          changelog text, e.g. Dependabot release notes).
+        type: number
+        required: false
+        default: 5
     secrets:
       ACTION_PAT:
         required: true
@@ -16,6 +33,10 @@ env:
 
 jobs:
   link:
+    # Never run for bot-authored PRs (dependabot[bot], renovate[bot], ...).
+    # Their descriptions embed upstream release notes full of owner/repo#N
+    # references, which previously caused comment spam on third-party repos.
+    if: ${{ !endsWith(github.event.pull_request.user.login, '[bot]') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
 
@@ -44,24 +65,47 @@ jobs:
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
+          SOURCE_REPO: ${{ github.repository }}
+          ALLOWED_OWNERS: ${{ inputs.allowed_owners || github.repository_owner }}
+          MAX_LINKS: ${{ inputs.max_links }}
         run: |
           echo "${{ env.LOG_PREFIX }} Extracting issue references..."
+          echo "${{ env.LOG_PREFIX }} Allowed owners: ${ALLOWED_OWNERS}"
 
           BODY="${PR_TITLE} ${PR_BODY}"
 
+          # Normalise every reference to owner/repo#N (bare #N -> current repo),
+          # then keep only references whose owner is in the allow-list.
           ISSUES=$(echo "$BODY" | \
             grep -Eo '([a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+)?#[0-9]+' | \
-            sort -u)
+            sed -E "s|^#|${SOURCE_REPO}#|" | \
+            while IFS= read -r REF; do
+              OWNER="${REF%%/*}"
+              for ALLOWED in $ALLOWED_OWNERS; do
+                if [ "${OWNER,,}" == "${ALLOWED,,}" ]; then
+                  echo "$REF"
+                  break
+                fi
+              done
+            done | \
+            sort -fu)
 
           if [ -z "$ISSUES" ]; then
-            echo "${{ env.LOG_PREFIX }} No issues found"
+            echo "${{ env.LOG_PREFIX }} No in-scope issues found"
             echo "count=0" >> $GITHUB_OUTPUT
             exit 0
           fi
 
           ISSUE_COUNT=$(echo "$ISSUES" | wc -l)
 
-          echo "${{ env.LOG_PREFIX }} Found $ISSUE_COUNT issue(s)"
+          echo "${{ env.LOG_PREFIX }} Found $ISSUE_COUNT in-scope reference(s)"
+
+          if [ "$ISSUE_COUNT" -gt "$MAX_LINKS" ]; then
+            echo "::warning::${{ env.LOG_PREFIX }} $ISSUE_COUNT references exceed max_links=$MAX_LINKS; skipping linking to avoid comment spam."
+            echo "capped=true" >> $GITHUB_OUTPUT
+            echo "count=0" >> $GITHUB_OUTPUT
+            exit 0
+          fi
 
           echo "count=$ISSUE_COUNT" >> $GITHUB_OUTPUT
 
@@ -70,30 +114,32 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Cleanup stale issue links
-        if: github.event.action == 'edited'
+        # Don't treat links as stale when extraction was skipped due to max_links.
+        if: github.event.action == 'edited' && steps.extract.outputs.capped != 'true'
         env:
           GH_TOKEN: ${{ secrets.ACTION_PAT }}
           PR_URL: ${{ github.event.pull_request.html_url }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_BODY: ${{ github.event.pull_request.body }}
+          SOURCE_REPO: ${{ github.repository }}
+          ALLOWED_OWNERS: ${{ inputs.allowed_owners || github.repository_owner }}
+          CURRENT_ISSUES: ${{ steps.extract.outputs.issues }}
         run: |
           set +e
           set +o pipefail
 
           echo "${{ env.LOG_PREFIX }} Cleaning stale issue links..."
 
-          CURRENT_BODY="${PR_TITLE} ${PR_BODY}"
-
-          CURRENT_ISSUES=$(echo "$CURRENT_BODY" | \
-            grep -Eo '([a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+)?#[0-9]+' | \
-            sort -u || true)
-
           MARKER="pr-linker:${PR_URL}"
 
-          SEARCH_RESPONSE=$(curl -s \
+          # Restrict the search to allowed owners only.
+          QUALIFIERS=""
+          for ALLOWED in $ALLOWED_OWNERS; do
+            QUALIFIERS="${QUALIFIERS}+org:${ALLOWED}"
+          done
+
+          SEARCH_RESPONSE=$(curl -s -G \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/search/issues?q=${MARKER}+in:comments")
+            "https://api.github.com/search/issues?q=%22${MARKER}%22+in:comments${QUALIFIERS}")
 
           COMMENT_URLS=$(echo "$SEARCH_RESPONSE" | \
             jq -r '.items[].comments_url' 2>/dev/null || true)
@@ -101,7 +147,7 @@ jobs:
           while IFS= read -r COMMENTS_URL; do
             [ -z "$COMMENTS_URL" ] && continue
 
-            ISSUE_API=$(echo "$COMMENTS_URL" | sed 's|/comments||')
+            ISSUE_API=$(echo "$COMMENTS_URL" | sed 's|/comments$||')
 
             ISSUE_DATA=$(curl -s \
               -H "Authorization: Bearer $GH_TOKEN" \
@@ -116,7 +162,8 @@ jobs:
 
             ISSUE_REF="${ISSUE_REPO}#${ISSUE_NUMBER}"
 
-            if ! echo "$CURRENT_ISSUES" | grep -q "$ISSUE_REF"; then
+            # CURRENT_ISSUES is already normalised to owner/repo#N.
+            if ! echo "$CURRENT_ISSUES" | grep -qixF "$ISSUE_REF"; then
 
               echo "${{ env.LOG_PREFIX }} Removing stale link from $ISSUE_REF"
 
@@ -136,7 +183,7 @@ jobs:
 
                 [ -n "$COMMENT_ID" ] && break
 
-                CLEANUP_PAGE_SIZE=$(echo "$COMMENTS_DATA" | jq 'length')
+                CLEANUP_PAGE_SIZE=$(echo "$COMMENTS_DATA" | jq 'length' 2>/dev/null || echo 0)
 
                 [ "$CLEANUP_PAGE_SIZE" -lt 100 ] && break
 
@@ -164,14 +211,15 @@ jobs:
           SOURCE_REPO: ${{ github.repository }}
           PR_ACTION: ${{ github.event.action }}
           PR_MERGED: ${{ github.event.pull_request.merged }}
+          ISSUES: ${{ steps.extract.outputs.issues }}
         run: |
           set +e
           set +o pipefail
 
-          ISSUES="${{ steps.extract.outputs.issues }}"
           MARKER="<!-- pr-linker:${PR_URL} -->"
 
           PROCESSED=0
+          SKIPPED=0
           FAILED=0
 
           echo "${{ env.LOG_PREFIX }} Processing issues..."
@@ -187,13 +235,9 @@ jobs:
           while IFS= read -r ISSUE; do
             [ -z "$ISSUE" ] && continue
 
-            if [[ "$ISSUE" == *"/"* ]]; then
-              REPO=$(echo "$ISSUE" | cut -d'#' -f1)
-              NUMBER=$(echo "$ISSUE" | cut -d'#' -f2)
-            else
-              REPO="$SOURCE_REPO"
-              NUMBER=$(echo "$ISSUE" | cut -d'#' -f2)
-            fi
+            # Extract step guarantees owner/repo#N form.
+            REPO="${ISSUE%%#*}"
+            NUMBER="${ISSUE##*#}"
 
             if ! [[ "$NUMBER" =~ ^[0-9]+$ ]]; then
               echo "${{ env.LOG_PREFIX }} Invalid issue number: $NUMBER"
@@ -202,6 +246,27 @@ jobs:
             fi
 
             echo "${{ env.LOG_PREFIX }} → Processing $REPO#$NUMBER"
+
+            # Only link real issues: skip PRs and references that don't resolve.
+            ISSUE_RESPONSE=$(curl -s -w "\n%{http_code}" \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$REPO/issues/$NUMBER")
+
+            ISSUE_HTTP=$(echo "$ISSUE_RESPONSE" | tail -n1)
+            ISSUE_JSON=$(echo "$ISSUE_RESPONSE" | head -n-1)
+
+            if [ "$ISSUE_HTTP" != "200" ]; then
+              echo "${{ env.LOG_PREFIX }} Skipping $REPO#$NUMBER (HTTP $ISSUE_HTTP)"
+              ((SKIPPED++))
+              continue
+            fi
+
+            if [ "$(echo "$ISSUE_JSON" | jq -r 'has("pull_request")')" == "true" ]; then
+              echo "${{ env.LOG_PREFIX }} Skipping $REPO#$NUMBER (is a pull request)"
+              ((SKIPPED++))
+              continue
+            fi
 
             COMMENT_ID=""
             PAGE=1
@@ -287,7 +352,7 @@ jobs:
 
           done <<< "$ISSUES"
 
-          echo "${{ env.LOG_PREFIX }} Done. Processed: $PROCESSED | Failed: $FAILED"
+          echo "${{ env.LOG_PREFIX }} Done. Processed: $PROCESSED | Skipped: $SKIPPED | Failed: $FAILED"
 
           exit 0
 

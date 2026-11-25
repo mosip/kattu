@@ -562,39 +562,44 @@ jobs:
               return tag.rsplit('}', 1)[-1] if isinstance(tag, str) else ''
 
 
-          # Only <repositories>/<pluginRepositories> are used for resolution;
-          # <distributionManagement> targets are for publishing and are ignored. URLs come from
-          # the repository's files, so they are matched against a strict pattern and are only
-          # ever passed to curl as an argument, never to a shell.
+          # Trivy reads only a pom's direct <repositories> (its parser maps `repositories>repository`).
+          # <pluginRepositories>, repositories inside <profiles> and <distributionManagement>
+          # (publishing) are never used to resolve dependencies, so they are not probed: a dead one
+          # must not switch the scan to offline mode. URLs come from the repository's files, so
+          # they are matched against a strict pattern, URLs with credentials are skipped, and
+          # they are only ever passed to curl as an argument, never to a shell.
           repos = set()
           for path in glob.glob('**/pom.xml', recursive=True):
               try:
                   root = ET.parse(path).getroot()
               except (ET.ParseError, OSError):
                   continue
-              for group in root.iter():
-                  if local(group.tag) not in ('repositories', 'pluginRepositories'):
+              for group in root:
+                  if local(group.tag) != 'repositories':
                       continue
                   for repo in group:
                       for child in repo:
                           if local(child.tag) == 'url' and child.text:
                               url = child.text.strip()
-                              if URL_RE.fullmatch(url):
+                              if URL_RE.fullmatch(url) and '@' not in urlsplit(url).netloc:
                                   repos.add(url)
 
           # Only a repository that never answers is a problem. One that fails fast (name does
           # not resolve, connection refused, TLS or HTTP error) is skipped by Trivy within
           # seconds, so it keeps the full scan; curl exits 28 only when the request times out.
+          # Redirects are followed (as Trivy's HTTP client does), so a repository that redirects
+          # to a host that never answers is caught too.
           CURL_TIMEOUT = 28
           hung = []
           for url in sorted(repos)[:MAX_REPOS]:
               rc = subprocess.run(
                   ['curl', '-sS', '-o', '/dev/null', '--head', '--connect-timeout', '5',
-                   '--max-time', '10', '--max-redirs', '3', '--proto', '=http,https', url],
+                   '--max-time', '10', '--location', '--max-redirs', '3',
+                   '--proto', '=http,https', '--proto-redir', '=http,https', url],
                   stderr=subprocess.DEVNULL,
               ).returncode
               if rc == CURL_TIMEOUT:
-                  hung.append(urlsplit(url).netloc)
+                  hung.append(urlsplit(url).hostname or '<unknown-host>')
 
           print(f'Checked {min(len(repos), MAX_REPOS)} declared Maven repositories; {len(hung)} did not answer.')
           if hung:

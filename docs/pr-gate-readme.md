@@ -291,15 +291,20 @@ These are things the **calling workflow / caller repo** must provide — the gat
 - Optionally pin the SDK via `FLUTTER_VERSION`.
 
 ### Trivy filesystem scan (`trivy-fs`) and Maven repositories
-- Trivy resolves a `pom.xml`'s dependencies from the Maven repositories the pom declares in
-  `<repositories>` / `<pluginRepositories>`. A declared repository that accepts connections but
-  never answers makes the scan run until its timeout and then **fail** with `analyzer timed out ...
-  context deadline exceeded`, which would block every PR on that project.
-- Before scanning, the job makes one `HEAD` request (10 s limit) to each declared repository, in
-  both the PR tree and the base tree. If one does not answer, the whole job scans with remote Maven
-  resolution turned off and prints a warning naming the host. Repositories that fail fast (the name
-  does not resolve, the connection is refused, an HTTP error) do not trigger this: Trivy skips them
-  in seconds and the scan stays complete.
+- Trivy resolves a `pom.xml`'s dependencies from the Maven repositories the pom declares in its
+  direct `<repositories>`. A declared repository that accepts connections but never answers makes
+  the scan run until its timeout and then **fail** with `analyzer timed out ... context deadline
+  exceeded`, which would block every PR on that project.
+- Before scanning, the job makes one `HEAD` request (10 s limit, redirects followed) to each
+  repository in a pom's direct `<repositories>`, in both the PR tree and the base tree. If one does
+  not answer, the whole job scans with remote Maven resolution turned off and prints a warning
+  naming the host. Repositories that fail fast (the name does not resolve, the connection is
+  refused, an HTTP error) do not trigger this: Trivy skips them in seconds and the scan stays
+  complete.
+- Not probed, because Trivy does not use them to resolve dependencies: `<pluginRepositories>`,
+  repositories inside `<profiles>`, and `<distributionManagement>`. Also not probed: mirrors from a
+  `settings.xml`, repositories declared only in a remote parent pom, and URLs that embed credentials
+  (they are skipped, and never printed).
 - **Coverage trade-off:** with remote resolution off, a dependency that pins its own `<version>` is
   still reported, but a version inherited from a remote parent or BOM (for example a Spring Boot
   parent) and transitive dependencies are not. In a test fixture this cut 123 findings to 8, which

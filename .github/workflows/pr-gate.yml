@@ -526,24 +526,99 @@ jobs:
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
-      # ── Step A: Table scan for comment (never fails the job) ──────────────
-      - name: Trivy scan (table report for comment)
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
-        with:
-          scan-type: fs
-          scan-ref: .
-          severity: ${{ inputs.SCAN_SEVERITY }}
-          exit-code: '0'
-          format: table
-          output: trivy-report.txt
-
-      # ── Step B (diff mode): Checkout base ref for comparison ──────────────
+      # ── Step A (diff mode): Checkout base ref for comparison ──────────────
+      # Checked out before any scan so the repository check below can read both trees.
       - name: Checkout base ref for diff comparison
         if: inputs.trivy_comment_mode == 'diff' && github.event_name == 'pull_request'
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
           ref: ${{ github.event.pull_request.base.sha }}
           path: trivy-base
+
+      # Trivy resolves pom.xml dependencies from the Maven repositories a pom declares. A
+      # declared repository that never answers makes every scan run until its timeout and then
+      # fail, which blocks every PR on a project whose pom still lists a dead repository (seen
+      # on inji/vc-verifier with repo.sovrin.org). Probe each declared repository once, in the
+      # PR tree and the base tree, and if one does not answer scan with remote resolution off
+      # for the whole job, so the base and head scans stay comparable.
+      # Offline mode still reports a dependency that pins its own version, but not a version
+      # inherited from a remote parent/BOM nor transitive dependencies, so it is announced
+      # rather than silent. When every declared repository answers, the scan is unchanged.
+      - name: Check Maven repositories declared in pom.xml files
+        run: |
+          python3 - <<'PY'
+          import glob
+          import os
+          import re
+          import subprocess
+          import xml.etree.ElementTree as ET
+          from urllib.parse import urlsplit
+
+          MAX_REPOS = 20
+          URL_RE = re.compile(r'https?://[A-Za-z0-9._~:/@%+-]+')
+
+
+          def local(tag):
+              return tag.rsplit('}', 1)[-1] if isinstance(tag, str) else ''
+
+
+          # Only <repositories>/<pluginRepositories> are used for resolution;
+          # <distributionManagement> targets are for publishing and are ignored. URLs come from
+          # the repository's files, so they are matched against a strict pattern and are only
+          # ever passed to curl as an argument, never to a shell.
+          repos = set()
+          for path in glob.glob('**/pom.xml', recursive=True):
+              try:
+                  root = ET.parse(path).getroot()
+              except (ET.ParseError, OSError):
+                  continue
+              for group in root.iter():
+                  if local(group.tag) not in ('repositories', 'pluginRepositories'):
+                      continue
+                  for repo in group:
+                      for child in repo:
+                          if local(child.tag) == 'url' and child.text:
+                              url = child.text.strip()
+                              if URL_RE.fullmatch(url):
+                                  repos.add(url)
+
+          # Only a repository that never answers is a problem. One that fails fast (name does
+          # not resolve, connection refused, TLS or HTTP error) is skipped by Trivy within
+          # seconds, so it keeps the full scan; curl exits 28 only when the request times out.
+          CURL_TIMEOUT = 28
+          hung = []
+          for url in sorted(repos)[:MAX_REPOS]:
+              rc = subprocess.run(
+                  ['curl', '-sS', '-o', '/dev/null', '--head', '--connect-timeout', '5',
+                   '--max-time', '10', '--max-redirs', '3', '--proto', '=http,https', url],
+                  stderr=subprocess.DEVNULL,
+              ).returncode
+              if rc == CURL_TIMEOUT:
+                  hung.append(urlsplit(url).netloc)
+
+          print(f'Checked {min(len(repos), MAX_REPOS)} declared Maven repositories; {len(hung)} did not answer.')
+          if hung:
+              hosts = ', '.join(sorted(set(hung)))
+              with open(os.environ['GITHUB_ENV'], 'a') as env:
+                  env.write('TRIVY_OFFLINE_SCAN=true\n')
+              print(f'::warning title=Trivy: Maven repository did not answer::{hosts} did not answer. '
+                    'Scanning without remote Maven resolution: dependencies that pin a version are '
+                    'still reported, but versions inherited from a remote parent/BOM and transitive '
+                    'dependencies are not.')
+          PY
+
+      # ── Step B: Table scan for comment (never fails the job) ──────────────
+      # skip-dirs: trivy-base is the diff-mode base checkout above; it is not part of this tree.
+      - name: Trivy scan (table report for comment)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          skip-dirs: trivy-base
+          severity: ${{ inputs.SCAN_SEVERITY }}
+          exit-code: '0'
+          format: table
+          output: trivy-report.txt
 
       - name: Trivy scan base ref (JSON for diff)
         if: inputs.trivy_comment_mode == 'diff' && github.event_name == 'pull_request'
@@ -656,6 +731,7 @@ jobs:
         with:
           scan-type: fs
           scan-ref: .
+          skip-dirs: trivy-base
           severity: ${{ inputs.SCAN_SEVERITY }}
           exit-code: '0'
           format: sarif

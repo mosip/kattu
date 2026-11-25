@@ -11,6 +11,16 @@ on:
         required: false
         type: string
         default: 'https://sonarcloud.io'
+      JDK_VERSION:
+        description: "JDK version to build with"
+        required: false
+        default: "21"
+        type: string
+      JDK_DISTRIBUTION:
+        description: "JDK distribution (e.g. temurin, adopt)"
+        required: false
+        default: "temurin"
+        type: string
     secrets:
       SONAR_TOKEN:
         required: true
@@ -32,11 +42,11 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v3
-      - name: Set up JDK 21
+      - name: Set up JDK ${{ inputs.JDK_VERSION }}
         uses: actions/setup-java@v3
         with:
-          distribution: 'temurin'
-          java-version: '21'
+          distribution: ${{ inputs.JDK_DISTRIBUTION }}
+          java-version: ${{ inputs.JDK_VERSION }}
           server-id: ossrh # Value of the distributionManagement/repository/id field of the pom.xml
           settings-path: ${{ github.workspace }} # location for the settings.xml file
 
